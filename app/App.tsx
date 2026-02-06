@@ -21,7 +21,7 @@ import { cachedFetch, weatherGovFetch } from "./services/weatherProxy";
 // Initial mock data to populate the app before any search
 const initialLocations = [
   { id: "1", name: "SeaTac, WA", lat: 47.4502, lon: -122.3088, airport: "KSEA" },
-  { id: "2", name: "Enumclaw, WA", lat: 47.1850, lon: -121.9644, airport: "WA77" },
+  { id: "2", name: "Renton, WA", lat: 47.4931, lon: -122.2158, airport: "KRNT" },
   { id: "3", name: "Joint Base Lewis-McChord, WA", lat: 47.1376, lon: -122.4762, airport: "KTCM" },
   { id: "4", name: "Boeing Field, WA", lat: 47.5300, lon: -122.3019, airport: "KBFI" },
 ];
@@ -118,6 +118,11 @@ function normalizeAirportCode(value: string | undefined | null): string | null {
   return normalized;
 }
 
+function isIcaoCode(value: string | null | undefined): value is string {
+  if (!value) return false;
+  return /^[A-Z]{4}$/.test(value.toUpperCase());
+}
+
 function normalizeAirportSearchCode(value: string | undefined | null): string | null {
   const normalized = normalizeAirportCode(value);
   if (!normalized) return null;
@@ -135,9 +140,13 @@ function airportCodeFromUserSearch(
 }
 
 function bestAirportCodeFromResult(result: SearchResult): string | null {
+  const icao = normalizeAirportCode(result.extratags?.icao);
+  if (isIcaoCode(icao)) return icao;
+
+  const iata = normalizeAirportCode(result.extratags?.iata);
+  if (iata && iata.length === 3 && isUSResult(result)) return `K${iata}`;
+
   return (
-    normalizeAirportCode(result.extratags?.icao) ||
-    normalizeAirportCode(result.extratags?.iata) ||
     normalizeAirportCode(result.extratags?.ref) ||
     normalizeAirportCode(result.extratags?.local_ref)
   );
@@ -237,6 +246,14 @@ function dedupeByPlaceId(results: SearchResult[]): SearchResult[] {
     output.push(result);
   }
   return output;
+}
+
+function toAirportOnlyResults(results: SearchResult[]): SearchResult[] {
+  return results.filter((result) => {
+    if (!isAirportLike(result)) return false;
+    const code = bestAirportCodeFromResult(result);
+    return isIcaoCode(code);
+  });
 }
 
 function distanceMiles(aLat: number, aLon: number, bLat: number, bLon: number): number {
@@ -379,7 +396,7 @@ export default function App() {
           `/api/position/search?${proxyParams.toString()}`,
           1800,
         );
-        const usProxyResults = (proxyData ?? []).filter(isUSResult);
+        const usProxyResults = toAirportOnlyResults((proxyData ?? []).filter(isUSResult));
         if (usProxyResults.length > 0) {
           if (!cancelled) {
             setSearchResults(
@@ -405,7 +422,7 @@ export default function App() {
           fetchJsonWithTimeout<{ results?: OpenMeteoGeocodingResult[] }>(geoUrl.toString(), 2200),
         ]);
 
-        const usDirectResults = (directNominatim ?? []).filter(isUSResult);
+        const usDirectResults = toAirportOnlyResults((directNominatim ?? []).filter(isUSResult));
         if (usDirectResults.length > 0) {
           if (!cancelled) {
             setSearchResults(
@@ -440,7 +457,7 @@ export default function App() {
         }));
 
         if (!cancelled) {
-          setSearchResults(prioritizeSearchResults(dedupeByPlaceId(mapped), query, userCoordinates));
+          setSearchResults(prioritizeSearchResults(dedupeByPlaceId(toAirportOnlyResults(mapped)), query, userCoordinates));
         }
 
       } catch (error) {
