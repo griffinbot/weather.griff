@@ -6,12 +6,12 @@ import {
   Moon,
   Sun,
   RefreshCw,
+  ArrowUp,
 } from "lucide-react";
 import {
   useWindAloft,
   interpolateToAGL,
   NORMALIZED_ALTITUDES_AGL,
-  PRESSURE_LEVELS,
   WindAloftHour,
 } from "../hooks/useWindAloft";
 import { useEffect, useRef, useState, useMemo } from "react";
@@ -37,6 +37,7 @@ interface WindDataTableProps {
 }
 
 const WIND_TABLE_SETTINGS_STORAGE_KEY = "weather.griff.windDataSettings.v1";
+const RAW_ALTITUDE_DEDUPE_TOLERANCE_FT = 5;
 
 type AltitudeFormat = "AGL" | "MSL" | "Pressure";
 type AltitudeNormalized = "normalized" | "raw";
@@ -273,6 +274,20 @@ export function WindDataTable({
         }
       }
     } else {
+      if (altitudeFormat !== "Pressure") {
+        for (const lv of hour.nearSurfaceLevels) {
+          rows.push({
+            label: String(lv.altitudeAGL_ft),
+            temperature: lv.temperature_F,
+            windSpeed: lv.windSpeed_mph,
+            windDirection: lv.windDirection,
+            altitudeAGL_ft: lv.altitudeAGL_ft,
+            altitudeMSL_ft: lv.altitudeMSL_ft,
+            pressureLevel: 0,
+          });
+        }
+      }
+
       // Raw pressure-level data
       for (const lv of hour.levels) {
         rows.push({
@@ -290,7 +305,21 @@ export function WindDataTable({
       }
     }
 
-    return rows;
+    if (rows.length <= 1) return rows;
+    const [surface, ...upperRows] = rows;
+    upperRows.sort((a, b) => a.altitudeAGL_ft - b.altitudeAGL_ft);
+    if (altitudeNormalized === "raw" && altitudeFormat !== "Pressure") {
+      const dedupedRows = upperRows.filter((row, index) => {
+        if (index === 0) return true;
+        const previous = upperRows[index - 1];
+        return (
+          Math.abs(row.altitudeAGL_ft - previous.altitudeAGL_ft) >
+          RAW_ALTITUDE_DEDUPE_TOLERANCE_FT
+        );
+      });
+      return [surface, ...dedupedRows];
+    }
+    return [surface, ...upperRows];
   }
 
   // ── Display helpers ───────────────────────────────────────────────
@@ -356,16 +385,9 @@ export function WindDataTable({
     return `${h12}:${m.toString().padStart(2, "0")}${ampm}`;
   };
 
-  const getWindDirectionArrow = (deg: number) => {
-    const n = ((deg % 360) + 360) % 360;
-    if (n >= 337.5 || n < 22.5) return "↓";
-    if (n < 67.5) return "↙";
-    if (n < 112.5) return "←";
-    if (n < 157.5) return "↖";
-    if (n < 202.5) return "↑";
-    if (n < 247.5) return "↗";
-    if (n < 292.5) return "→";
-    return "↘";
+  const getWindDirectionRotation = (deg: number) => {
+    const normalized = ((deg % 360) + 360) % 360;
+    return (normalized + 180) % 360;
   };
 
   const getTempColor = (temp: number) => {
@@ -384,6 +406,32 @@ export function WindDataTable({
     if (speed >= 10) return "text-green-200";
     if (speed >= 5) return "text-green-300";
     return "text-white";
+  };
+
+  const getHourlyWindSummary = (hour: WindAloftHour) => {
+    const profileSpeedsMph = [
+      hour.surfaceWindSpeed_mph,
+      ...hour.nearSurfaceLevels.map((level) => level.windSpeed_mph),
+      ...hour.levels.map((level) => level.windSpeed_mph),
+    ].filter((value) => Number.isFinite(value) && value >= 0);
+
+    const avgMph =
+      profileSpeedsMph.length > 0
+        ? Math.round(
+            profileSpeedsMph.reduce((sum, value) => sum + value, 0) /
+              profileSpeedsMph.length,
+          )
+        : hour.surfaceWindSpeed_mph;
+
+    const profilePeakMph =
+      profileSpeedsMph.length > 0
+        ? Math.max(...profileSpeedsMph)
+        : hour.surfaceWindSpeed_mph;
+
+    return {
+      avgMph,
+      gustMph: Math.max(hour.surfaceWindGust_mph, profilePeakMph),
+    };
   };
 
   // Cloud height label helper
@@ -760,6 +808,7 @@ export function WindDataTable({
             const isNow = hourIndex === nowIndex;
             const rows = buildRows(hour);
             const daytime = isDaytime(hour.time);
+            const windSummary = getHourlyWindSummary(hour);
 
             return (
               <div
@@ -781,6 +830,12 @@ export function WindDataTable({
                     </span>
                     <span className="font-semibold">
                       CAPE {hour.cape}
+                    </span>
+                    <span className="font-semibold">
+                      AVG {convertSpeed(windSummary.avgMph)} {getSpeedUnitLabel()}
+                    </span>
+                    <span className="font-semibold">
+                      GUST {convertSpeed(windSummary.gustMph)} {getSpeedUnitLabel()}
                     </span>
                   </div>
                 </div>
@@ -838,11 +893,14 @@ export function WindDataTable({
 
                         {/* Direction */}
                         <div className="text-white font-medium flex items-center whitespace-nowrap">
-                          <span className="text-lg leading-none">
-                            {getWindDirectionArrow(
-                              row.windDirection,
-                            )}
-                          </span>
+                          <ArrowUp
+                            className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0"
+                            style={{
+                              transform: `rotate(${getWindDirectionRotation(
+                                row.windDirection,
+                              )}deg)`,
+                            }}
+                          />
                           <span className="ml-1 text-xs">
                             {row.windDirection}°
                           </span>
