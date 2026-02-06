@@ -29,18 +29,16 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
     const incomingUrl = new URL(request.url);
     const routePath = normalizePath(context.params.path);
     if (!routePath) {
-      throw new HttpError(400, "Missing weather.gov path");
+      throw new HttpError(400, "Missing weather path");
     }
     requireRegex(routePath, /^[A-Za-z0-9\-\.,/]+$/, "path");
-
-    const upstreamUrl = `https://api.weather.gov/${routePath}`;
 
     const response = await fetchJsonWithCache({
       request,
       ctx: context,
-      cacheKeyPath: `/api/weather-gov/${routePath}`,
+      cacheKeyPath: `/api/weather/${routePath}`,
       cacheQuery: incomingUrl.searchParams,
-      targetUrl: upstreamUrl,
+      targetUrl: `https://api.weather.gov/${routePath}${incomingUrl.search}`,
       ttlSeconds: 600,
       staleTtlSeconds: 3600,
       upstreamHeaders: buildUpstreamHeaders(env, "application/geo+json, application/json"),

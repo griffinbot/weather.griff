@@ -16,17 +16,28 @@ interface EventContext {
 
 const CLIENT_LIMITS = {
   "nominatim": { capacity: 30, refillPerSecond: 0.5 },
-  // Open-Meteo and weather.gov are used for core app data and can burst on
-  // initial dashboard load (multiple panels + saved locations).
   "open-meteo": { capacity: 300, refillPerSecond: 20 },
   "weather-gov": { capacity: 180, refillPerSecond: 8 },
+  "timezone": { capacity: 120, refillPerSecond: 2 },
+  "rap": { capacity: 60, refillPerSecond: 1 },
+  "aviationweather": { capacity: 120, refillPerSecond: 2 },
+  "pqs": { capacity: 120, refillPerSecond: 2 },
+  "googleelevation": { capacity: 60, refillPerSecond: 1 },
+  "tfr": { capacity: 120, refillPerSecond: 2 },
+  "aviationalerts": { capacity: 120, refillPerSecond: 2 },
 } as const;
 
 const PROVIDER_LIMITS = {
   "nominatim": { capacity: 120, refillPerSecond: 2 },
-  // Keep provider protection, but high enough to avoid false 429s.
   "open-meteo": { capacity: 12000, refillPerSecond: 400 },
   "weather-gov": { capacity: 3000, refillPerSecond: 100 },
+  "timezone": { capacity: 1200, refillPerSecond: 20 },
+  "rap": { capacity: 600, refillPerSecond: 10 },
+  "aviationweather": { capacity: 1200, refillPerSecond: 20 },
+  "pqs": { capacity: 1200, refillPerSecond: 20 },
+  "googleelevation": { capacity: 600, refillPerSecond: 10 },
+  "tfr": { capacity: 1200, refillPerSecond: 20 },
+  "aviationalerts": { capacity: 1200, refillPerSecond: 20 },
 } as const;
 
 function getClientIp(request: Request): string {
@@ -40,8 +51,18 @@ function getClientIp(request: Request): string {
 
 function providerFromPath(pathname: string): keyof typeof CLIENT_LIMITS | null {
   if (pathname.startsWith("/api/nominatim/")) return "nominatim";
+  if (pathname.startsWith("/api/position/")) return "nominatim";
   if (pathname.startsWith("/api/open-meteo/")) return "open-meteo";
+  if (pathname.startsWith("/api/openmeteo/")) return "open-meteo";
   if (pathname.startsWith("/api/weather-gov/")) return "weather-gov";
+  if (pathname.startsWith("/api/weather/")) return "weather-gov";
+  if (pathname === "/api/timezone") return "timezone";
+  if (pathname === "/api/rap") return "rap";
+  if (pathname === "/api/aviationweather") return "aviationweather";
+  if (pathname === "/api/pqs") return "pqs";
+  if (pathname === "/api/googleelevation") return "googleelevation";
+  if (pathname === "/api/tfr") return "tfr";
+  if (pathname === "/api/aviationalerts") return "aviationalerts";
   return null;
 }
 

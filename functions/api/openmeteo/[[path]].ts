@@ -29,21 +29,19 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
     const incomingUrl = new URL(request.url);
     const routePath = normalizePath(context.params.path);
     if (!routePath) {
-      throw new HttpError(400, "Missing weather.gov path");
+      throw new HttpError(400, "Missing open-meteo path");
     }
-    requireRegex(routePath, /^[A-Za-z0-9\-\.,/]+$/, "path");
-
-    const upstreamUrl = `https://api.weather.gov/${routePath}`;
+    requireRegex(routePath, /^[A-Za-z0-9\-_/]+$/, "path");
 
     const response = await fetchJsonWithCache({
       request,
       ctx: context,
-      cacheKeyPath: `/api/weather-gov/${routePath}`,
+      cacheKeyPath: `/api/openmeteo/${routePath}`,
       cacheQuery: incomingUrl.searchParams,
-      targetUrl: upstreamUrl,
+      targetUrl: `https://api.open-meteo.com/v1/${routePath}${incomingUrl.search}`,
       ttlSeconds: 600,
       staleTtlSeconds: 3600,
-      upstreamHeaders: buildUpstreamHeaders(env, "application/geo+json, application/json"),
+      upstreamHeaders: buildUpstreamHeaders(env),
     });
 
     return withCors(response, request, env);
@@ -51,6 +49,6 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
     if (error instanceof HttpError) {
       return jsonError(error.status, error.message, request, env);
     }
-    return jsonError(502, "weather.gov proxy failed", request, env);
+    return jsonError(502, "Open-Meteo proxy failed", request, env);
   }
 }

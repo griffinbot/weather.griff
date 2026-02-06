@@ -1,5 +1,6 @@
 import { fetchJsonWithCache } from "../../_lib/cache";
 import {
+  buildUpstreamHeaders,
   HttpError,
   jsonError,
   normalizeQueryString,
@@ -50,11 +51,9 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
       cacheKeyPath: "/api/open-meteo/forecast",
       cacheQuery: new URLSearchParams(normalizedSearch),
       targetUrl: upstreamUrl,
-      ttlSeconds: 300,
-      staleTtlSeconds: 1800,
-      upstreamHeaders: {
-        "Accept": "application/json",
-      },
+      ttlSeconds: 600,
+      staleTtlSeconds: 3600,
+      upstreamHeaders: buildUpstreamHeaders(env),
     });
 
     return withCors(response, request, env);

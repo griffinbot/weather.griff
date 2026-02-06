@@ -71,6 +71,25 @@ export function getProxyUserAgent(env: Env): string {
   return env.PROXY_USER_AGENT || "weather-griff-proxy/1.0 (contact: admin@griffmathews.com)";
 }
 
+export function buildUpstreamHeaders(
+  env: Env,
+  accept: string = "application/json",
+  extra?: HeadersInit,
+): Headers {
+  const headers = new Headers(extra);
+  headers.set("User-Agent", getProxyUserAgent(env));
+  headers.set("Accept", accept);
+  return headers;
+}
+
+export function requireEnvVar(value: string | undefined, name: string): string {
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new HttpError(500, `Missing required env var: ${name}`);
+  }
+  return normalized;
+}
+
 export async function jsonError(status: number, message: string, request: Request, env: Env, extra?: Record<string, string | number>): Promise<Response> {
   const headers = new Headers({ "content-type": "application/json" });
   if (extra) {

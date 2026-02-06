@@ -1,56 +1,79 @@
 # Cloudflare Deploy Notes
 
-This project already includes a reverse proxy at Cloudflare Pages Functions under `/api/*`:
+This repo is Cloudflare-only: the app and `/api/*` proxy run on Cloudflare Pages Functions.
 
-- `/api/open-meteo/forecast`
+## API endpoints
+
+Compatibility routes (kept for current frontend behavior):
 - `/api/nominatim/search`
+- `/api/open-meteo/forecast`
 - `/api/weather-gov/*`
 
-The proxy enforces:
+Contract routes:
+- Required:
+  - `/api/position/search`
+  - `/api/position/reverse`
+  - `/api/timezone`
+  - `/api/openmeteo/*`
+- Optional:
+  - `/api/rap`
+  - `/api/aviationweather`
+  - `/api/weather/*`
+  - `/api/pqs`
+  - `/api/googleelevation`
+  - `/api/tfr`
+  - `/api/aviationalerts`
 
-- CORS allowlist (`ALLOWED_ORIGIN`)
+The proxy enforces:
+- strict CORS (`ALLOWED_ORIGIN`)
+- GET/OPTIONS method policy
 - per-client and per-provider rate limits (Durable Object)
 - edge cache + stale fallback
+- outbound `User-Agent` on upstream requests
 
 ## 1. Prerequisites
 
 - Domain in Cloudflare: `griffmathews.com`
-- Node/pnpm installed
+- Node + pnpm installed
 - Cloudflare auth:
 
 ```sh
 npx wrangler whoami
 ```
 
-If not logged in:
+If needed:
 
 ```sh
 npx wrangler login
 ```
 
-## 2. Build and deploy
+## 2. Runtime variables and secrets
+
+Set non-secret vars in `wrangler.jsonc` or Pages project settings:
+- `ALLOWED_ORIGIN=https://weather.griffmathews.com`
+- `PROXY_USER_AGENT=weather-griff-proxy/1.0 (contact: admin@griffmathews.com)`
+- optional: `TFR_UPSTREAM_URL`
+- optional: `AVIATIONALERTS_UPSTREAM_URL`
+
+Set required secrets (do not commit these):
+
+```sh
+npx wrangler secret put TIMEZONEDB_API_KEY
+npx wrangler secret put GOOGLE_ELEVATION_API_KEY
+```
+
+## 3. Build and deploy
 
 ```sh
 pnpm install
 pnpm run build
-npx wrangler pages deploy dist --project-name weather-griff
+npx wrangler pages deploy dist --project-name weather-griff --config wrangler.jsonc
 ```
 
-## 3. Bind custom domain
+## 4. Bind custom domain
 
 In Cloudflare dashboard:
 
 1. `Workers & Pages` -> `weather-griff`
 2. `Custom domains` -> `Set up a custom domain`
 3. Add `weather.griffmathews.com`
-
-Cloudflare will create/validate the DNS record for the subdomain.
-
-## 4. Required runtime vars
-
-Already set in `wrangler.jsonc`:
-
-- `ALLOWED_ORIGIN=https://weather.griffmathews.com`
-- `PROXY_USER_AGENT=weather-griff-proxy/1.0 (contact: admin@griffmathews.com)`
-
-You can override these in the Pages project settings per environment.

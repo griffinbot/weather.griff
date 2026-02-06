@@ -3,7 +3,7 @@ import {
   buildUpstreamHeaders,
   HttpError,
   jsonError,
-  requireAllowedQuery,
+  requireRegex,
   withCors,
 } from "../../_lib/proxy";
 import type { Env } from "../../_lib/rateLimiter";
@@ -14,38 +14,31 @@ interface EventContext {
   waitUntil: (promise: Promise<unknown>) => void;
 }
 
-const ALLOWED_QUERY = new Set(["q", "limit"]);
-
 export async function onRequestGet(context: EventContext): Promise<Response> {
   const { request, env } = context;
 
   try {
     const incomingUrl = new URL(request.url);
-    requireAllowedQuery(incomingUrl.searchParams, ALLOWED_QUERY);
 
-    const q = incomingUrl.searchParams.get("q")?.trim() || "";
-    if (q.length < 3 || q.length > 120) {
-      throw new HttpError(400, "Query must be between 3 and 120 characters");
+    const lat = incomingUrl.searchParams.get("lat") || "";
+    const lon = incomingUrl.searchParams.get("lon") || "";
+    if (!lat || !lon) {
+      throw new HttpError(400, "lat and lon are required");
     }
+    requireRegex(lat, /^-?\d{1,2}(?:\.\d+)?$/, "lat");
+    requireRegex(lon, /^-?\d{1,3}(?:\.\d+)?$/, "lon");
 
-    const rawLimit = Number.parseInt(incomingUrl.searchParams.get("limit") || "5", 10);
-    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 5)) : 5;
-
-    const upstreamParams = new URLSearchParams({
-      q,
-      format: "json",
-      addressdetails: "1",
-      extratags: "1",
-      countrycodes: "us",
-      limit: String(limit),
-    });
+    const upstreamParams = new URLSearchParams(incomingUrl.searchParams);
+    if (!upstreamParams.has("format")) {
+      upstreamParams.set("format", "json");
+    }
 
     const response = await fetchJsonWithCache({
       request,
       ctx: context,
-      cacheKeyPath: "/api/nominatim/search",
+      cacheKeyPath: "/api/position/reverse",
       cacheQuery: upstreamParams,
-      targetUrl: `https://nominatim.openstreetmap.org/search?${upstreamParams.toString()}`,
+      targetUrl: `https://nominatim.openstreetmap.org/reverse.php?${upstreamParams.toString()}`,
       ttlSeconds: 604800,
       staleTtlSeconds: 1209600,
       upstreamHeaders: buildUpstreamHeaders(env),
@@ -56,6 +49,6 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
     if (error instanceof HttpError) {
       return jsonError(error.status, error.message, request, env);
     }
-    return jsonError(502, "Nominatim proxy failed", request, env);
+    return jsonError(502, "Position reverse proxy failed", request, env);
   }
 }

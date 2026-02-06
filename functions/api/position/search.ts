@@ -3,7 +3,6 @@ import {
   buildUpstreamHeaders,
   HttpError,
   jsonError,
-  requireAllowedQuery,
   withCors,
 } from "../../_lib/proxy";
 import type { Env } from "../../_lib/rateLimiter";
@@ -14,36 +13,30 @@ interface EventContext {
   waitUntil: (promise: Promise<unknown>) => void;
 }
 
-const ALLOWED_QUERY = new Set(["q", "limit"]);
-
 export async function onRequestGet(context: EventContext): Promise<Response> {
   const { request, env } = context;
 
   try {
     const incomingUrl = new URL(request.url);
-    requireAllowedQuery(incomingUrl.searchParams, ALLOWED_QUERY);
 
     const q = incomingUrl.searchParams.get("q")?.trim() || "";
-    if (q.length < 3 || q.length > 120) {
-      throw new HttpError(400, "Query must be between 3 and 120 characters");
+    if (q.length < 2 || q.length > 120) {
+      throw new HttpError(400, "Query must be between 2 and 120 characters");
     }
 
     const rawLimit = Number.parseInt(incomingUrl.searchParams.get("limit") || "5", 10);
-    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 5)) : 5;
-
-    const upstreamParams = new URLSearchParams({
-      q,
-      format: "json",
-      addressdetails: "1",
-      extratags: "1",
-      countrycodes: "us",
-      limit: String(limit),
-    });
+    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 10)) : 5;
+    const upstreamParams = new URLSearchParams(incomingUrl.searchParams);
+    upstreamParams.set("q", q);
+    upstreamParams.set("limit", String(limit));
+    if (!upstreamParams.has("format")) {
+      upstreamParams.set("format", "json");
+    }
 
     const response = await fetchJsonWithCache({
       request,
       ctx: context,
-      cacheKeyPath: "/api/nominatim/search",
+      cacheKeyPath: "/api/position/search",
       cacheQuery: upstreamParams,
       targetUrl: `https://nominatim.openstreetmap.org/search?${upstreamParams.toString()}`,
       ttlSeconds: 604800,
@@ -56,6 +49,6 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
     if (error instanceof HttpError) {
       return jsonError(error.status, error.message, request, env);
     }
-    return jsonError(502, "Nominatim proxy failed", request, env);
+    return jsonError(502, "Position search proxy failed", request, env);
   }
 }

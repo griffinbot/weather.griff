@@ -24,6 +24,10 @@ interface LimitResult {
 export interface Env {
   ALLOWED_ORIGIN?: string;
   PROXY_USER_AGENT?: string;
+  TIMEZONEDB_API_KEY?: string;
+  GOOGLE_ELEVATION_API_KEY?: string;
+  TFR_UPSTREAM_URL?: string;
+  AVIATIONALERTS_UPSTREAM_URL?: string;
   RATE_LIMITER: DurableObjectNamespace<RateLimiterDurableObject>;
 }
 
