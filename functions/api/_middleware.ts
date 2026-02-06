@@ -15,29 +15,32 @@ interface EventContext {
 }
 
 const CLIENT_LIMITS = {
-  "nominatim": { capacity: 30, refillPerSecond: 0.5 },
-  "open-meteo": { capacity: 300, refillPerSecond: 20 },
-  "weather-gov": { capacity: 180, refillPerSecond: 8 },
-  "timezone": { capacity: 120, refillPerSecond: 2 },
-  "rap": { capacity: 60, refillPerSecond: 1 },
-  "aviationweather": { capacity: 120, refillPerSecond: 2 },
-  "pqs": { capacity: 120, refillPerSecond: 2 },
-  "googleelevation": { capacity: 60, refillPerSecond: 1 },
-  "tfr": { capacity: 120, refillPerSecond: 2 },
-  "aviationalerts": { capacity: 120, refillPerSecond: 2 },
+  // Tuned for small-team testing (~5 users) to reduce false 429s from UI bursts.
+  "nominatim": { capacity: 60, refillPerSecond: 1 },
+  "open-meteo": { capacity: 1200, refillPerSecond: 80 },
+  "weather-gov": { capacity: 500, refillPerSecond: 25 },
+  "timezone": { capacity: 240, refillPerSecond: 4 },
+  "rap": { capacity: 120, refillPerSecond: 2 },
+  "aviationweather": { capacity: 240, refillPerSecond: 4 },
+  "pqs": { capacity: 240, refillPerSecond: 4 },
+  "googleelevation": { capacity: 120, refillPerSecond: 2 },
+  "tfr": { capacity: 240, refillPerSecond: 4 },
+  "aviationalerts": { capacity: 240, refillPerSecond: 4 },
 } as const;
 
 const PROVIDER_LIMITS = {
-  "nominatim": { capacity: 120, refillPerSecond: 2 },
-  "open-meteo": { capacity: 12000, refillPerSecond: 400 },
-  "weather-gov": { capacity: 3000, refillPerSecond: 100 },
-  "timezone": { capacity: 1200, refillPerSecond: 20 },
-  "rap": { capacity: 600, refillPerSecond: 10 },
-  "aviationweather": { capacity: 1200, refillPerSecond: 20 },
-  "pqs": { capacity: 1200, refillPerSecond: 20 },
-  "googleelevation": { capacity: 600, refillPerSecond: 10 },
-  "tfr": { capacity: 1200, refillPerSecond: 20 },
-  "aviationalerts": { capacity: 1200, refillPerSecond: 20 },
+  // Keep provider protection, but allow higher burst for test sessions.
+  // Nominatim stays intentionally conservative versus other upstreams.
+  "nominatim": { capacity: 120, refillPerSecond: 1.5 },
+  "open-meteo": { capacity: 20000, refillPerSecond: 700 },
+  "weather-gov": { capacity: 5000, refillPerSecond: 180 },
+  "timezone": { capacity: 2400, refillPerSecond: 40 },
+  "rap": { capacity: 1000, refillPerSecond: 16 },
+  "aviationweather": { capacity: 2400, refillPerSecond: 40 },
+  "pqs": { capacity: 2400, refillPerSecond: 40 },
+  "googleelevation": { capacity: 1000, refillPerSecond: 16 },
+  "tfr": { capacity: 2400, refillPerSecond: 40 },
+  "aviationalerts": { capacity: 2400, refillPerSecond: 40 },
 } as const;
 
 function getClientIp(request: Request): string {

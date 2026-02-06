@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, MapPin, Settings, Wind, FileText, Plane, BarChart3, Calendar, Loader2, Bookmark, BookmarkCheck, X, Trash2, ChevronLeft, ChevronRight, Menu, MessageSquare } from "lucide-react";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
@@ -42,6 +42,8 @@ interface SearchResult {
   extratags?: {
     iata?: string;
     icao?: string;
+    ref?: string;
+    local_ref?: string;
     [key: string]: string | undefined;
   };
 }
@@ -54,6 +56,15 @@ interface OpenMeteoGeocodingResult {
   country_code?: string;
   admin1?: string;
   timezone?: string;
+}
+
+interface SavedLocation {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  airport: string;
+  airportLookupPending?: boolean;
 }
 
 async function safeParseJson<T>(res: Response): Promise<T | null> {
@@ -86,6 +97,26 @@ function isAirportLike(result: SearchResult): boolean {
     result.type === "aerodrome" ||
     result.display_name.toLowerCase().includes("airport")
   );
+}
+
+function normalizeAirportCode(value: string | undefined | null): string | null {
+  if (!value) return null;
+  const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!/^[A-Z0-9]{3,5}$/.test(normalized)) return null;
+  return normalized;
+}
+
+function bestAirportCodeFromResult(result: SearchResult): string | null {
+  return (
+    normalizeAirportCode(result.extratags?.icao) ||
+    normalizeAirportCode(result.extratags?.iata) ||
+    normalizeAirportCode(result.extratags?.ref) ||
+    normalizeAirportCode(result.extratags?.local_ref)
+  );
+}
+
+function isPlaceholderAirportCode(code: string): boolean {
+  return code === "ARPT" || code === "GPS";
 }
 
 function dedupeByPlaceId(results: SearchResult[]): SearchResult[] {
@@ -124,8 +155,8 @@ function prioritizeSearchResults(results: SearchResult[], query: string): Search
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [savedLocations, setSavedLocations] = useState(initialLocations);
-  const [selectedLocation, setSelectedLocation] = useState(savedLocations[0]);
+  const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(initialLocations);
+  const [selectedLocation, setSelectedLocation] = useState<SavedLocation>(initialLocations[0]);
   const [activeTab, setActiveTab] = useState("overview");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
@@ -134,12 +165,13 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const resolvingAirportIdsRef = useRef<Set<string>>(new Set());
 
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
-    }, 600); // Slightly increased delay to be nicer to the API with double requests
+    }, 250);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -159,9 +191,18 @@ export default function App() {
         const query = debouncedQuery.trim();
         const normalizedCodeQuery = query.toUpperCase().replace(/[^A-Z0-9]/g, "");
         const looksLikeAirportCode = /^[A-Z0-9]{3,4}$/.test(normalizedCodeQuery);
+        const proxyParams = new URLSearchParams({
+          q: query,
+          limit: "8",
+          format: "json",
+          addressdetails: "1",
+          extratags: "1",
+          countrycodes: "us",
+        });
 
         const proxyData = await fetchJsonWithTimeout<SearchResult[]>(
-          `/api/nominatim/search?q=${encodeURIComponent(query)}&limit=8`,
+          `/api/position/search?${proxyParams.toString()}`,
+          1800,
         );
         if (proxyData && proxyData.length > 0) {
           if (!cancelled) setSearchResults(prioritizeSearchResults(dedupeByPlaceId(proxyData), query));
@@ -169,17 +210,20 @@ export default function App() {
         }
 
         // Cloudflare egress can be blocked by Nominatim. Try browser-direct as fallback.
-        const directParams = new URLSearchParams({
-          q: query,
-          format: "json",
-          addressdetails: "1",
-          extratags: "1",
-          limit: "8",
-          countrycodes: "us",
-        });
-        const directNominatim = await fetchJsonWithTimeout<SearchResult[]>(
-          `https://nominatim.openstreetmap.org/search?${directParams.toString()}`,
-        );
+        const geoUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
+        geoUrl.searchParams.set("name", query);
+        geoUrl.searchParams.set("count", "8");
+        geoUrl.searchParams.set("language", "en");
+        geoUrl.searchParams.set("format", "json");
+
+        const [directNominatim, geoJson] = await Promise.all([
+          fetchJsonWithTimeout<SearchResult[]>(
+            `https://nominatim.openstreetmap.org/search?${proxyParams.toString()}`,
+            1800,
+          ),
+          fetchJsonWithTimeout<{ results?: OpenMeteoGeocodingResult[] }>(geoUrl.toString(), 2200),
+        ]);
+
         if (directNominatim && directNominatim.length > 0) {
           if (!cancelled) {
             setSearchResults(
@@ -190,15 +234,6 @@ export default function App() {
         }
 
         // Fallback: Open-Meteo geocoding (more tolerant, but no airport tags).
-        const geoUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
-        geoUrl.searchParams.set("name", query);
-        geoUrl.searchParams.set("count", "8");
-        geoUrl.searchParams.set("language", "en");
-        geoUrl.searchParams.set("format", "json");
-
-        const geoJson = await fetchJsonWithTimeout<{ results?: OpenMeteoGeocodingResult[] }>(
-          geoUrl.toString(),
-        );
         const results = geoJson?.results ?? [];
 
         const mapped: SearchResult[] = results.map((r) => ({
@@ -242,10 +277,9 @@ export default function App() {
   // Helper to create location object from search result
   const createLocationFromResult = (result: SearchResult) => {
     // Determine airport code (IATA > ICAO > Generic)
-    let airportCode = "GPS";
-    if (result.extratags?.iata) airportCode = result.extratags.iata.toUpperCase();
-    else if (result.extratags?.icao) airportCode = result.extratags.icao.toUpperCase();
-    else if (result.class === 'aeroway' || result.type === 'aerodrome') airportCode = "ARPT";
+    const airportLike = isAirportLike(result);
+    const resolvedAirportCode = bestAirportCodeFromResult(result);
+    const airportCode = resolvedAirportCode || (airportLike ? "ARPT" : "GPS");
 
     // Format the location name (City, State)
     let locationName = result.display_name.split(',')[0];
@@ -270,7 +304,8 @@ export default function App() {
       name: locationName,
       lat: parseFloat(result.lat),
       lon: parseFloat(result.lon),
-      airport: airportCode
+      airport: airportCode,
+      airportLookupPending: airportLike && !resolvedAirportCode,
     };
   };
 
@@ -296,14 +331,30 @@ export default function App() {
 
   // Select a location from search (doesn't automatically save)
   const handleSelectLocation = (result: SearchResult) => {
-    const location = createLocationFromResult(result);
-    
-    // If not saved, also save it
-    if (!isLocationSaved(result)) {
-      setSavedLocations([...savedLocations, location]);
-    }
-    
-    setSelectedLocation(location);
+    const nextLocation = createLocationFromResult(result);
+
+    setSavedLocations((prev) => {
+      const existing = prev.find((loc) => loc.id === nextLocation.id);
+      if (!existing) return [...prev, nextLocation];
+
+      const shouldPromoteAirportCode =
+        isPlaceholderAirportCode(existing.airport) && !isPlaceholderAirportCode(nextLocation.airport);
+      if (!shouldPromoteAirportCode) return prev;
+
+      return prev.map((loc) =>
+        loc.id === nextLocation.id
+          ? { ...loc, airport: nextLocation.airport, airportLookupPending: nextLocation.airportLookupPending }
+          : loc,
+      );
+    });
+
+    setSelectedLocation((prev) => {
+      if (prev.id !== nextLocation.id) return nextLocation;
+      if (isPlaceholderAirportCode(prev.airport) && !isPlaceholderAirportCode(nextLocation.airport)) {
+        return { ...prev, airport: nextLocation.airport, airportLookupPending: nextLocation.airportLookupPending };
+      }
+      return nextLocation;
+    });
     setSearchQuery("");
     setSearchResults([]);
   };
@@ -313,9 +364,12 @@ export default function App() {
     e.stopPropagation();
     const newLocation = createLocationFromResult(result);
     
-    if (!savedLocations.find(loc => loc.id === newLocation.id)) {
-      setSavedLocations([...savedLocations, newLocation]);
-    }
+    setSavedLocations((prev) => {
+      if (!prev.find((loc) => loc.id === newLocation.id)) {
+        return [...prev, newLocation];
+      }
+      return prev;
+    });
   };
 
   // Delete a location from saved list
@@ -331,11 +385,76 @@ export default function App() {
   };
 
   const getAirportCode = (result: SearchResult) => {
-    if (result.extratags?.iata) return result.extratags.iata.toUpperCase();
-    if (result.extratags?.icao) return result.extratags.icao.toUpperCase();
-    if (result.class === 'aeroway' || result.type === 'aerodrome') return "ARPT";
+    const resolved = bestAirportCodeFromResult(result);
+    if (resolved) return resolved;
+    if (isAirportLike(result)) return "ARPT";
     return null;
   };
+
+  useEffect(() => {
+    const pending = savedLocations.filter(
+      (location) =>
+        location.airportLookupPending &&
+        isPlaceholderAirportCode(location.airport) &&
+        !resolvingAirportIdsRef.current.has(location.id),
+    );
+
+    if (pending.length === 0) return;
+
+    let cancelled = false;
+
+    const resolveAirportCodes = async () => {
+      for (const location of pending) {
+        if (cancelled) break;
+        resolvingAirportIdsRef.current.add(location.id);
+
+        try {
+          const stationData = await fetchJsonWithTimeout<{
+            features?: Array<{
+              properties?: { stationIdentifier?: string };
+            }>;
+          }>(
+            `/api/weather-gov/points/${location.lat.toFixed(4)},${location.lon.toFixed(4)}/stations`,
+            2200,
+          );
+
+          const resolvedCode =
+            normalizeAirportCode(stationData?.features?.[0]?.properties?.stationIdentifier) ?? null;
+
+          if (!cancelled) {
+            setSavedLocations((prev) =>
+              prev.map((loc) =>
+                loc.id === location.id
+                  ? {
+                      ...loc,
+                      airport: resolvedCode ?? loc.airport,
+                      airportLookupPending: false,
+                    }
+                  : loc,
+              ),
+            );
+
+            setSelectedLocation((prev) => {
+              if (prev.id !== location.id) return prev;
+              return {
+                ...prev,
+                airport: resolvedCode ?? prev.airport,
+                airportLookupPending: false,
+              };
+            });
+          }
+        } finally {
+          resolvingAirportIdsRef.current.delete(location.id);
+        }
+      }
+    };
+
+    resolveAirportCodes();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [savedLocations]);
 
   return (
     <div className="flex flex-col h-screen bg-[#f5f5f7] overflow-hidden">
