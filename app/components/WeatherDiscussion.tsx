@@ -78,7 +78,6 @@ export function WeatherDiscussion({ location }: WeatherDiscussionProps) {
     const fetchDiscussion = async () => {
       setLoading(true);
       setError(null);
-      setData(null);
 
       try {
         const points = await weatherGovFetch<any>(
@@ -175,7 +174,7 @@ export function WeatherDiscussion({ location }: WeatherDiscussionProps) {
     });
   };
 
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="p-6">
         <div className="bg-white rounded-2xl p-10 shadow-sm border border-gray-100 flex items-center justify-center gap-3 text-gray-600">
@@ -186,7 +185,7 @@ export function WeatherDiscussion({ location }: WeatherDiscussionProps) {
     );
   }
 
-  if (error || !data) {
+  if ((error && !data) || !data) {
     return (
       <div className="p-6">
         <div className="bg-white rounded-2xl p-8 shadow-sm border border-red-100 text-center space-y-3">
@@ -202,6 +201,18 @@ export function WeatherDiscussion({ location }: WeatherDiscussionProps) {
 
   return (
     <div className="p-6 space-y-6">
+      {loading && data && (
+        <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2 text-sm text-blue-700 flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Refreshing discussion…
+        </div>
+      )}
+      {error && data && (
+        <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-2 text-sm text-amber-700">
+          Showing previous discussion while refresh retries.
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
         <div className="flex items-start justify-between mb-4">
           <div>

@@ -24,11 +24,18 @@ interface AirportReportsProps {
   location: Location;
 }
 
+function normalizeStationId(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{3,6}$/.test(normalized)) return null;
+  return normalized;
+}
+
 // ─── METAR display ──────────────────────────────────────────────────
 function MetarDisplay({ stationId }: { stationId: string }) {
   const { data: metar, loading, error, refetch } = useMetar(stationId);
 
-  if (loading) {
+  if (loading && !metar) {
     return (
       <div className="flex items-center gap-2 py-8 justify-center">
         <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
@@ -37,7 +44,7 @@ function MetarDisplay({ stationId }: { stationId: string }) {
     );
   }
 
-  if (error || !metar) {
+  if ((error && !metar) || !metar) {
     return (
       <div className="py-6 text-center space-y-3">
         <div className="flex items-center justify-center gap-2 text-amber-600">
@@ -82,10 +89,16 @@ function MetarDisplay({ stationId }: { stationId: string }) {
             className="text-gray-400 hover:text-blue-500"
             title="Refresh"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="text-xs text-amber-600">
+          Showing last successful report while refresh retries.
+        </div>
+      )}
 
       {/* Raw METAR */}
       <div className="bg-gray-900 text-green-400 p-6 rounded-xl font-mono text-sm leading-relaxed overflow-x-auto">
@@ -160,7 +173,7 @@ function MetarDisplay({ stationId }: { stationId: string }) {
 function TafDisplay({ stationId }: { stationId: string }) {
   const { data: taf, loading, error, refetch } = useTaf(stationId);
 
-  if (loading) {
+  if (loading && !taf) {
     return (
       <div className="flex items-center gap-2 py-8 justify-center">
         <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
@@ -169,7 +182,7 @@ function TafDisplay({ stationId }: { stationId: string }) {
     );
   }
 
-  if (error || !taf) {
+  if ((error && !taf) || !taf) {
     return (
       <div className="py-6 text-center space-y-3">
         <div className="flex items-center justify-center gap-2 text-amber-600">
@@ -212,10 +225,16 @@ function TafDisplay({ stationId }: { stationId: string }) {
             className="text-gray-400 hover:text-blue-500"
             title="Refresh"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="text-xs text-amber-600">
+          Showing last successful report while refresh retries.
+        </div>
+      )}
 
       {/* Raw TAF */}
       <div className="bg-gray-900 text-green-400 p-6 rounded-xl font-mono text-sm leading-relaxed overflow-x-auto whitespace-pre-wrap">
@@ -259,7 +278,7 @@ export function AirportReports({ location }: AirportReportsProps) {
   } = useNearbyStations(location.lat, location.lon);
 
   const [selectedStationId, setSelectedStationId] = useState<string | null>(
-    null,
+    normalizeStationId(location.airport),
   );
 
   // Auto-select first station when list loads
@@ -267,12 +286,12 @@ export function AirportReports({ location }: AirportReportsProps) {
     if (stations.length > 0 && !selectedStationId) {
       setSelectedStationId(stations[0].stationId);
     }
-  }, [stations]);
+  }, [stations, selectedStationId]);
 
   // Reset selection when location changes
   useEffect(() => {
-    setSelectedStationId(null);
-  }, [location.lat, location.lon]);
+    setSelectedStationId(normalizeStationId(location.airport));
+  }, [location.lat, location.lon, location.airport]);
 
   // Limit to 8 stations for display
   const displayStations = stations.slice(0, 8);

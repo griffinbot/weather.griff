@@ -16,7 +16,7 @@ import { SevenDayOutlook } from "./components/SevenDayOutlook";
 import { AIAssistantPanel } from "./components/AIAssistantPanel";
 import { SavedLocationWidget } from "./components/SavedLocationWidget";
 import { Footer } from "./components/Footer";
-import { weatherGovFetch } from "./services/weatherProxy";
+import { cachedFetch, weatherGovFetch } from "./services/weatherProxy";
 
 // Initial mock data to populate the app before any search
 const initialLocations = [
@@ -147,6 +147,87 @@ function isPlaceholderAirportCode(code: string): boolean {
   return code === "ARPT" || code === "GPS";
 }
 
+function normalizeOfficeCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(cleaned)) return null;
+  return cleaned;
+}
+
+function officeCodeFromUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const part = value.split("/").filter(Boolean).pop();
+  return normalizeOfficeCode(part ?? null);
+}
+
+function toWeatherGovProxyPath(pathOrUrl: string): string {
+  if (pathOrUrl.startsWith("https://api.weather.gov/")) {
+    const parsed = new URL(pathOrUrl);
+    return `/api/weather-gov${parsed.pathname}${parsed.search}`;
+  }
+  if (pathOrUrl.startsWith("/api/weather-gov/")) return pathOrUrl;
+  if (pathOrUrl.startsWith("/")) return `/api/weather-gov${pathOrUrl}`;
+  return `/api/weather-gov/${pathOrUrl}`;
+}
+
+function resolveLatestProductPath(product: any): string | null {
+  const atId = product?.["@id"];
+  if (typeof atId === "string" && atId.length > 0) return toWeatherGovProxyPath(atId);
+  const id = product?.id;
+  if (typeof id === "string" && id.length > 0) return `/api/weather-gov/products/${id}`;
+  if (typeof id === "number") return `/api/weather-gov/products/${String(id)}`;
+  return null;
+}
+
+function officeMatchesProduct(product: any, officeCode: string): boolean {
+  const code = officeCode.toUpperCase();
+  const issuingOffice = String(product?.issuingOffice ?? product?.office ?? "").toUpperCase();
+  const wmo = String(product?.wmoCollectiveId ?? product?.productIdentifier ?? "").toUpperCase();
+  return issuingOffice.includes(`/${code}`) || issuingOffice.endsWith(code) || wmo.includes(code);
+}
+
+function normalizeMajorStationId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim().toUpperCase();
+  if (!/^[KP][A-Z]{3}$/.test(cleaned)) return null;
+  return cleaned;
+}
+
+function pickNearbyMajorStations(features: any[], currentAirport: string): string[] {
+  const current = normalizeMajorStationId(currentAirport);
+  const rows = features
+    .map((feature) => {
+      const id = normalizeMajorStationId(feature?.properties?.stationIdentifier);
+      if (!id) return null;
+      const name = String(feature?.properties?.name ?? "").toUpperCase();
+      const majorHint =
+        name.includes("INTERNATIONAL") ||
+        name.includes("INTL") ||
+        name.includes("REGIONAL") ||
+        name.includes("MUNICIPAL") ||
+        name.includes("FIELD") ||
+        name.includes("AIRPORT");
+      let score = 0;
+      if (id === current) score += 100;
+      if (majorHint) score += 20;
+      if (id.startsWith("K")) score += 10;
+      return { id, score };
+    })
+    .filter((row): row is { id: string; score: number } => row !== null);
+
+  rows.sort((a, b) => b.score - a.score);
+  const unique: string[] = [];
+  for (const row of rows) {
+    if (!unique.includes(row.id)) unique.push(row.id);
+    if (unique.length >= 4) break;
+  }
+
+  if (current && !unique.includes(current)) {
+    return [current, ...unique].slice(0, 4);
+  }
+  return unique;
+}
+
 function dedupeByPlaceId(results: SearchResult[]): SearchResult[] {
   const seen = new Set<number>();
   const output: SearchResult[] = [];
@@ -226,6 +307,7 @@ export default function App() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [userCoordinates, setUserCoordinates] = useState<UserCoordinates | null>(null);
   const resolvingAirportIdsRef = useRef<Set<string>>(new Set());
+  const prefetchKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -557,6 +639,79 @@ export default function App() {
       cancelled = true;
     };
   }, [savedLocations]);
+
+  useEffect(() => {
+    const prefetchKey = `${selectedLocation.lat.toFixed(3)},${selectedLocation.lon.toFixed(3)}:${Math.floor(Date.now() / 600000)}`;
+    if (prefetchKeysRef.current.has(prefetchKey)) return;
+    prefetchKeysRef.current.add(prefetchKey);
+
+    let cancelled = false;
+
+    const prefetchRegionalData = async () => {
+      const pointsPath = `/api/weather-gov/points/${selectedLocation.lat.toFixed(4)},${selectedLocation.lon.toFixed(4)}`;
+      const stationsPath = `${pointsPath}/stations`;
+
+      const [points, stations] = await Promise.all([
+        weatherGovFetch<any>(pointsPath, 5 * 60_000).catch(() => null),
+        weatherGovFetch<any>(stationsPath, 10 * 60_000).catch(() => null),
+      ]);
+
+      if (cancelled) return;
+
+      const officeCode =
+        normalizeOfficeCode(points?.properties?.gridId) ||
+        officeCodeFromUrl(points?.properties?.forecastOffice);
+
+      const stationFeatures: any[] = Array.isArray(stations?.features) ? stations.features : [];
+      const stationIds = pickNearbyMajorStations(stationFeatures, selectedLocation.airport);
+
+      if (stationIds.length > 0) {
+        await Promise.all(
+          stationIds.flatMap((stationId) => [
+            weatherGovFetch(`/api/weather-gov/stations/${stationId}/observations/latest`, 3 * 60_000).catch(() => null),
+            cachedFetch(`/api/aviationweather?type=metar&ids=${encodeURIComponent(stationId)}&format=json`, undefined, 3 * 60_000).catch(() => null),
+            cachedFetch(`/api/aviationweather?type=taf&ids=${encodeURIComponent(stationId)}&format=json`, undefined, 5 * 60_000).catch(() => null),
+          ]),
+        );
+      }
+
+      if (!officeCode || cancelled) return;
+
+      let products: any[] = [];
+      try {
+        const list = await weatherGovFetch<any>(`/api/weather-gov/products/types/AFD/locations/${officeCode}`, 45_000);
+        products = Array.isArray(list?.["@graph"]) ? list["@graph"] : [];
+      } catch {
+        // fallback below
+      }
+
+      if (products.length === 0) {
+        const list = await weatherGovFetch<any>("/api/weather-gov/products/types/AFD", 45_000).catch(() => null);
+        const fallbackProducts: any[] = Array.isArray(list?.["@graph"]) ? list["@graph"] : [];
+        products = fallbackProducts.filter((item) => officeMatchesProduct(item, officeCode));
+      }
+
+      if (products.length === 0 || cancelled) return;
+
+      products.sort((a, b) => {
+        const aTs = Date.parse(a?.issuanceTime ?? "");
+        const bTs = Date.parse(b?.issuanceTime ?? "");
+        const aValue = Number.isFinite(aTs) ? aTs : 0;
+        const bValue = Number.isFinite(bTs) ? bTs : 0;
+        return bValue - aValue;
+      });
+
+      const latestProductPath = resolveLatestProductPath(products[0]);
+      if (!latestProductPath || cancelled) return;
+      await weatherGovFetch(latestProductPath, 60_000).catch(() => null);
+    };
+
+    prefetchRegionalData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLocation.lat, selectedLocation.lon, selectedLocation.airport]);
 
   return (
     <div className="flex flex-col h-screen bg-[#f5f5f7] overflow-hidden">
