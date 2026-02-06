@@ -16,6 +16,7 @@ import { SevenDayOutlook } from "./components/SevenDayOutlook";
 import { AIAssistantPanel } from "./components/AIAssistantPanel";
 import { SavedLocationWidget } from "./components/SavedLocationWidget";
 import { Footer } from "./components/Footer";
+import { weatherGovFetch } from "./services/weatherProxy";
 
 // Initial mock data to populate the app before any search
 const initialLocations = [
@@ -67,6 +68,11 @@ interface SavedLocation {
   airportLookupPending?: boolean;
 }
 
+interface UserCoordinates {
+  lat: number;
+  lon: number;
+}
+
 async function safeParseJson<T>(res: Response): Promise<T | null> {
   try {
     return (await res.json()) as T;
@@ -99,10 +105,32 @@ function isAirportLike(result: SearchResult): boolean {
   );
 }
 
+function isUSResult(result: SearchResult): boolean {
+  const countryCode = result.address?.country_code?.toLowerCase();
+  if (countryCode) return countryCode === "us";
+  return result.display_name.toLowerCase().includes("united states");
+}
+
 function normalizeAirportCode(value: string | undefined | null): string | null {
   if (!value) return null;
   const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (!/^[A-Z0-9]{3,5}$/.test(normalized)) return null;
+  return normalized;
+}
+
+function normalizeAirportSearchCode(value: string | undefined | null): string | null {
+  const normalized = normalizeAirportCode(value);
+  if (!normalized) return null;
+  return normalized.length >= 3 && normalized.length <= 4 ? normalized : null;
+}
+
+function airportCodeFromUserSearch(
+  value: string | undefined | null,
+  result: SearchResult,
+): string | null {
+  const normalized = normalizeAirportSearchCode(value);
+  if (!normalized) return null;
+  if (normalized.length === 3 && isUSResult(result)) return `K${normalized}`;
   return normalized;
 }
 
@@ -130,7 +158,24 @@ function dedupeByPlaceId(results: SearchResult[]): SearchResult[] {
   return output;
 }
 
-function prioritizeSearchResults(results: SearchResult[], query: string): SearchResult[] {
+function distanceMiles(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusMiles = 3958.8;
+  const dLat = toRadians(bLat - aLat);
+  const dLon = toRadians(bLon - aLon);
+  const sinHalfLat = Math.sin(dLat / 2);
+  const sinHalfLon = Math.sin(dLon / 2);
+  const a =
+    sinHalfLat * sinHalfLat +
+    Math.cos(toRadians(aLat)) * Math.cos(toRadians(bLat)) * sinHalfLon * sinHalfLon;
+  return earthRadiusMiles * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function prioritizeSearchResults(
+  results: SearchResult[],
+  query: string,
+  userCoordinates: UserCoordinates | null,
+): SearchResult[] {
   const airportCodeQuery = query.trim().toUpperCase();
   return [...results].sort((a, b) => {
     const aAirport = isAirportLike(a) ? 1 : 0;
@@ -149,6 +194,20 @@ function prioritizeSearchResults(results: SearchResult[], query: string): Search
     const bCodeMatch = bCode === airportCodeQuery ? 1 : 0;
     if (aCodeMatch !== bCodeMatch) return bCodeMatch - aCodeMatch;
 
+    if (userCoordinates) {
+      const aLat = Number.parseFloat(a.lat);
+      const aLon = Number.parseFloat(a.lon);
+      const bLat = Number.parseFloat(b.lat);
+      const bLon = Number.parseFloat(b.lon);
+      const aValid = Number.isFinite(aLat) && Number.isFinite(aLon);
+      const bValid = Number.isFinite(bLat) && Number.isFinite(bLon);
+      if (aValid && bValid) {
+        const aDistance = distanceMiles(userCoordinates.lat, userCoordinates.lon, aLat, aLon);
+        const bDistance = distanceMiles(userCoordinates.lat, userCoordinates.lon, bLat, bLon);
+        if (Math.abs(aDistance - bDistance) > 0.5) return aDistance - bDistance;
+      }
+    }
+
     return 0;
   });
 }
@@ -165,7 +224,34 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [userCoordinates, setUserCoordinates] = useState<UserCoordinates | null>(null);
   const resolvingAirportIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("geolocation" in navigator)) return;
+
+    const storageKey = "weather_griff_user_location_prompted_v1";
+    if (window.localStorage.getItem(storageKey) === "1") return;
+    window.localStorage.setItem(storageKey, "1");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserCoordinates({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+        });
+      },
+      () => {
+        // User denied or browser blocked geolocation. Search still works with US fallback logic.
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 6000,
+        maximumAge: 30 * 60 * 1000,
+      },
+    );
+  }, []);
 
   // Debounce search query
   useEffect(() => {
@@ -199,13 +285,25 @@ export default function App() {
           extratags: "1",
           countrycodes: "us",
         });
+        if (userCoordinates) {
+          const left = (userCoordinates.lon - 4).toFixed(4);
+          const right = (userCoordinates.lon + 4).toFixed(4);
+          const top = (userCoordinates.lat + 3).toFixed(4);
+          const bottom = (userCoordinates.lat - 3).toFixed(4);
+          proxyParams.set("viewbox", `${left},${top},${right},${bottom}`);
+        }
 
         const proxyData = await fetchJsonWithTimeout<SearchResult[]>(
           `/api/position/search?${proxyParams.toString()}`,
           1800,
         );
-        if (proxyData && proxyData.length > 0) {
-          if (!cancelled) setSearchResults(prioritizeSearchResults(dedupeByPlaceId(proxyData), query));
+        const usProxyResults = (proxyData ?? []).filter(isUSResult);
+        if (usProxyResults.length > 0) {
+          if (!cancelled) {
+            setSearchResults(
+              prioritizeSearchResults(dedupeByPlaceId(usProxyResults), query, userCoordinates),
+            );
+          }
           return;
         }
 
@@ -215,6 +313,7 @@ export default function App() {
         geoUrl.searchParams.set("count", "8");
         geoUrl.searchParams.set("language", "en");
         geoUrl.searchParams.set("format", "json");
+        geoUrl.searchParams.set("countryCode", "US");
 
         const [directNominatim, geoJson] = await Promise.all([
           fetchJsonWithTimeout<SearchResult[]>(
@@ -224,10 +323,11 @@ export default function App() {
           fetchJsonWithTimeout<{ results?: OpenMeteoGeocodingResult[] }>(geoUrl.toString(), 2200),
         ]);
 
-        if (directNominatim && directNominatim.length > 0) {
+        const usDirectResults = (directNominatim ?? []).filter(isUSResult);
+        if (usDirectResults.length > 0) {
           if (!cancelled) {
             setSearchResults(
-              prioritizeSearchResults(dedupeByPlaceId(directNominatim), query),
+              prioritizeSearchResults(dedupeByPlaceId(usDirectResults), query, userCoordinates),
             );
           }
           return;
@@ -236,7 +336,9 @@ export default function App() {
         // Fallback: Open-Meteo geocoding (more tolerant, but no airport tags).
         const results = geoJson?.results ?? [];
 
-        const mapped: SearchResult[] = results.map((r) => ({
+        const mapped: SearchResult[] = results
+          .filter((r) => (r.country_code ?? "").toUpperCase() === "US")
+          .map((r) => ({
           place_id: r.id,
           lat: String(r.latitude),
           lon: String(r.longitude),
@@ -251,12 +353,12 @@ export default function App() {
           extratags: looksLikeAirportCode
             ? (normalizedCodeQuery.length === 4
               ? { icao: normalizedCodeQuery }
-              : { iata: normalizedCodeQuery })
+              : { iata: normalizedCodeQuery, icao: `K${normalizedCodeQuery}` })
             : undefined,
         }));
 
         if (!cancelled) {
-          setSearchResults(prioritizeSearchResults(dedupeByPlaceId(mapped), query));
+          setSearchResults(prioritizeSearchResults(dedupeByPlaceId(mapped), query, userCoordinates));
         }
 
       } catch (error) {
@@ -272,14 +374,15 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, userCoordinates]);
 
   // Helper to create location object from search result
-  const createLocationFromResult = (result: SearchResult) => {
+  const createLocationFromResult = (result: SearchResult, preferredAirportCode?: string | null) => {
     // Determine airport code (IATA > ICAO > Generic)
     const airportLike = isAirportLike(result);
     const resolvedAirportCode = bestAirportCodeFromResult(result);
-    const airportCode = resolvedAirportCode || (airportLike ? "ARPT" : "GPS");
+    const preferred = airportLike ? airportCodeFromUserSearch(preferredAirportCode, result) : null;
+    const airportCode = preferred || resolvedAirportCode || (airportLike ? "ARPT" : "GPS");
 
     // Format the location name (City, State)
     let locationName = result.display_name.split(',')[0];
@@ -305,7 +408,7 @@ export default function App() {
       lat: parseFloat(result.lat),
       lon: parseFloat(result.lon),
       airport: airportCode,
-      airportLookupPending: airportLike && !resolvedAirportCode,
+      airportLookupPending: airportLike && !preferred && !resolvedAirportCode,
     };
   };
 
@@ -331,7 +434,7 @@ export default function App() {
 
   // Select a location from search (doesn't automatically save)
   const handleSelectLocation = (result: SearchResult) => {
-    const nextLocation = createLocationFromResult(result);
+    const nextLocation = createLocationFromResult(result, searchQuery);
 
     setSavedLocations((prev) => {
       const existing = prev.find((loc) => loc.id === nextLocation.id);
@@ -362,7 +465,7 @@ export default function App() {
   // Save a location (add to saved list)
   const handleSaveLocation = (result: SearchResult, e: React.MouseEvent) => {
     e.stopPropagation();
-    const newLocation = createLocationFromResult(result);
+    const newLocation = createLocationFromResult(result, searchQuery);
     
     setSavedLocations((prev) => {
       if (!prev.find((loc) => loc.id === newLocation.id)) {
@@ -384,7 +487,9 @@ export default function App() {
     }
   };
 
-  const getAirportCode = (result: SearchResult) => {
+  const getAirportCode = (result: SearchResult, preferredAirportCode?: string | null) => {
+    const preferred = isAirportLike(result) ? airportCodeFromUserSearch(preferredAirportCode, result) : null;
+    if (preferred) return preferred;
     const resolved = bestAirportCodeFromResult(result);
     if (resolved) return resolved;
     if (isAirportLike(result)) return "ARPT";
@@ -409,14 +514,11 @@ export default function App() {
         resolvingAirportIdsRef.current.add(location.id);
 
         try {
-          const stationData = await fetchJsonWithTimeout<{
+          const stationData = await weatherGovFetch<{
             features?: Array<{
               properties?: { stationIdentifier?: string };
             }>;
-          }>(
-            `/api/weather-gov/points/${location.lat.toFixed(4)},${location.lon.toFixed(4)}/stations`,
-            2200,
-          );
+          }>(`/api/weather-gov/points/${location.lat.toFixed(4)},${location.lon.toFixed(4)}/stations`, 10 * 60_000);
 
           const resolvedCode =
             normalizeAirportCode(stationData?.features?.[0]?.properties?.stationIdentifier) ?? null;
@@ -483,7 +585,7 @@ export default function App() {
                 <div className="absolute left-0 w-96 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[22rem] overflow-y-auto z-[200]">
                   {searchResults.length > 0 ? (
                     searchResults.map(result => {
-                      const code = getAirportCode(result);
+                      const code = getAirportCode(result, searchQuery);
                       const isAirport = !!code;
                       const isSaved = isLocationSaved(result);
                       
