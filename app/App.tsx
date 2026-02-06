@@ -179,6 +179,13 @@ function resolveLatestProductPath(product: any): string | null {
   return null;
 }
 
+function officeMatchesProduct(product: any, officeCode: string): boolean {
+  const code = officeCode.toUpperCase();
+  const issuingOffice = String(product?.issuingOffice ?? product?.office ?? "").toUpperCase();
+  const wmo = String(product?.wmoCollectiveId ?? product?.productIdentifier ?? "").toUpperCase();
+  return issuingOffice.includes(`/${code}`) || issuingOffice.endsWith(code) || wmo.includes(code);
+}
+
 function normalizeMajorStationId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim().toUpperCase();
@@ -703,8 +710,14 @@ export default function App() {
         }
 
         if (!officeCode || cancelled) return;
+        let products: any[] = [];
         const list = await weatherGovFetch<any>(`/api/weather-gov/products/types/AFD/locations/${officeCode}`, 45_000).catch(() => null);
-        const products: any[] = Array.isArray(list?.["@graph"]) ? list["@graph"] : [];
+        products = Array.isArray(list?.["@graph"]) ? list["@graph"] : [];
+        if (products.length === 0) {
+          const fallback = await weatherGovFetch<any>("/api/weather-gov/products/types/AFD", 45_000).catch(() => null);
+          const fallbackProducts: any[] = Array.isArray(fallback?.["@graph"]) ? fallback["@graph"] : [];
+          products = fallbackProducts.filter((item) => officeMatchesProduct(item, officeCode));
+        }
         if (products.length === 0 || cancelled) return;
 
         products.sort((a, b) => {

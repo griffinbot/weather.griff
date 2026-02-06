@@ -45,6 +45,13 @@ function resolveLatestProductRef(product: any): string | null {
   return null;
 }
 
+function officeMatchesProduct(product: any, officeCode: string): boolean {
+  const code = officeCode.toUpperCase();
+  const issuingOffice = String(product?.issuingOffice ?? product?.office ?? "").toUpperCase();
+  const wmo = String(product?.wmoCollectiveId ?? product?.productIdentifier ?? "").toUpperCase();
+  return issuingOffice.includes(`/${code}`) || issuingOffice.endsWith(code) || wmo.includes(code);
+}
+
 function parseDiscussionSection(text: string): string {
   const normalized = text.replace(/\r/g, "").trim();
   const afdIndex = normalized.search(/AREA FORECAST DISCUSSION|\.SYNOPSIS|\.(SHORT TERM|DISCUSSION)/i);
@@ -85,9 +92,21 @@ export function WeatherDiscussion({ location }: WeatherDiscussionProps) {
           throw new Error("Could not resolve NWS forecast office for this location.");
         }
 
-        const primaryListUrl = `/api/weather-gov/products/types/AFD/locations/${officeCode}`;
-        const primaryListJson = await weatherGovFetch<any>(primaryListUrl, 45_000);
-        const products: any[] = Array.isArray(primaryListJson?.["@graph"]) ? primaryListJson["@graph"] : [];
+        let products: any[] = [];
+        try {
+          const primaryListUrl = `/api/weather-gov/products/types/AFD/locations/${officeCode}`;
+          const primaryListJson = await weatherGovFetch<any>(primaryListUrl, 45_000);
+          products = Array.isArray(primaryListJson?.["@graph"]) ? primaryListJson["@graph"] : [];
+        } catch {
+          // Fall through to global list fallback.
+        }
+
+        if (products.length === 0) {
+          const fallbackListUrl = "/api/weather-gov/products/types/AFD";
+          const fallbackListJson = await weatherGovFetch<any>(fallbackListUrl, 45_000);
+          const fallbackProducts: any[] = Array.isArray(fallbackListJson?.["@graph"]) ? fallbackListJson["@graph"] : [];
+          products = fallbackProducts.filter((item) => officeMatchesProduct(item, officeCode));
+        }
 
         if (products.length === 0) {
           throw new Error("No Area Forecast Discussion products were found for this office.");

@@ -101,9 +101,13 @@ export async function cachedFetch<T = any>(
   url: string,
   options?: RequestInit,
   ttl = DEFAULT_TTL_MS,
+  timeoutMs = 8000,
 ): Promise<T> {
   const proxyUrl = toProxyUrl(url);
-  const allowDirectUpstreamFallback = !proxyUrl.startsWith("/api/");
+  const isOpenMeteoProxyUrl =
+    proxyUrl.startsWith("/api/open-meteo/forecast?") ||
+    proxyUrl.startsWith("/api/openmeteo/");
+  const allowDirectUpstreamFallback = !proxyUrl.startsWith("/api/") || isOpenMeteoProxyUrl;
   const upstreamFallbackUrl = allowDirectUpstreamFallback ? toUpstreamUrlFromProxy(proxyUrl) : null;
 
   // 1. Cache hit?
@@ -121,10 +125,10 @@ export async function cachedFetch<T = any>(
     try {
       const fetchWithTimeout = async (
         requestUrl: string,
-        timeoutMs = 4500,
+        requestTimeoutMs = timeoutMs,
       ): Promise<Response> => {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
         try {
           return await fetch(requestUrl, {
             ...options,
@@ -192,6 +196,7 @@ export async function cachedFetch<T = any>(
 export async function weatherGovFetch<T = any>(
   url: string,
   ttl = DEFAULT_TTL_MS,
+  timeoutMs = 15000,
 ): Promise<T> {
   return cachedFetch<T>(
     url,
@@ -204,6 +209,7 @@ export async function weatherGovFetch<T = any>(
       },
     },
     ttl,
+    timeoutMs,
   );
 }
 
@@ -213,8 +219,9 @@ export async function weatherGovFetch<T = any>(
 export async function openMeteoFetch<T = any>(
   url: string,
   ttl = DEFAULT_TTL_MS,
+  timeoutMs = 5000,
 ): Promise<T> {
-  return cachedFetch<T>(url, undefined, ttl);
+  return cachedFetch<T>(url, undefined, ttl, timeoutMs);
 }
 
 // ---------------------------------------------------------------------------
