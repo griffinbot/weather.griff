@@ -73,6 +73,54 @@ function toWeatherGovProxyUrl(pathOrUrl: string): string {
   return `/api/weather-gov/${pathOrUrl}`;
 }
 
+function stationIdCandidates(stationId: string): string[] {
+  const normalized = stationId.trim().toUpperCase();
+  const candidates = [normalized];
+  if ((normalized.startsWith("K") || normalized.startsWith("P")) && normalized.length === 4) {
+    candidates.push(normalized.slice(1));
+  }
+  return Array.from(new Set(candidates));
+}
+
+function extractRawMetarFromUnknownPayload(payload: unknown): string {
+  if (!payload) return "";
+
+  if (typeof payload === "string") {
+    const text = payload.trim();
+    if (!text) return "";
+    if (text.startsWith("<!DOCTYPE") || text.startsWith("<html")) return "";
+    return text;
+  }
+
+  if (Array.isArray(payload)) {
+    for (const entry of payload) {
+      const fromEntry = extractRawMetarFromUnknownPayload(entry);
+      if (fromEntry) return fromEntry;
+    }
+    return "";
+  }
+
+  if (typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    const candidateFields = [
+      "rawOb",
+      "raw_text",
+      "rawText",
+      "raw",
+      "metar",
+      "METAR",
+    ];
+    for (const field of candidateFields) {
+      const value = record[field];
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+  }
+
+  return "";
+}
+
 function resolveProductUrl(product: any): string | null {
   const atId = product?.["@id"];
   if (typeof atId === "string" && atId.length > 0) {
@@ -90,24 +138,35 @@ function resolveProductUrl(product: any): string | null {
 }
 
 async function fetchRawMetarFromAviationWeather(stationId: string): Promise<string> {
+  const ids = stationIdCandidates(stationId).join(",");
+
   try {
-    const response = await cachedFetch<any[] | Record<string, unknown>>(
-      `/api/aviationweather?type=metar&ids=${encodeURIComponent(stationId)}&format=json`,
+    const response = await cachedFetch<any[] | Record<string, unknown> | string>(
+      `/api/aviationweather?type=metar&ids=${encodeURIComponent(ids)}&format=json`,
       undefined,
       3 * 60_000,
     );
+    const parsed = extractRawMetarFromUnknownPayload(response);
+    if (parsed) return parsed;
+  } catch {
+    // Fallback below.
+  }
 
-    const first = Array.isArray(response) ? response[0] : response;
-    if (!first || typeof first !== "object") return "";
-
-    const candidateFields = ["rawOb", "raw_text", "rawText", "raw"];
-    for (const field of candidateFields) {
-      const value = (first as Record<string, unknown>)[field];
-      if (typeof value === "string" && value.trim().length > 0) {
-        return value.trim();
-      }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4500);
+    try {
+      const response = await fetch(
+        `/api/aviationweather?type=metar&ids=${encodeURIComponent(ids)}&format=raw`,
+        { signal: controller.signal },
+      );
+      if (!response.ok) return "";
+      const text = (await response.text()).trim();
+      if (!text || text.startsWith("<!DOCTYPE") || text.startsWith("<html")) return "";
+      return text;
+    } finally {
+      clearTimeout(timeout);
     }
-    return "";
   } catch {
     return "";
   }
@@ -116,9 +175,16 @@ async function fetchRawMetarFromAviationWeather(stationId: string): Promise<stri
 async function fetchRawMetarFromWeatherGovProducts(stationId: string): Promise<string> {
   try {
     const locId = icaoToLocationId(stationId);
-    const listUrl = `/api/weather-gov/products/types/METAR/locations/${locId}`;
-    const listJson = await weatherGovFetch<any>(listUrl, 3 * 60_000);
-    const products: any[] = Array.isArray(listJson?.["@graph"]) ? listJson["@graph"] : [];
+    const locationCandidates = Array.from(new Set([locId, stationId.toUpperCase()]));
+
+    let products: any[] = [];
+    for (const locationCandidate of locationCandidates) {
+      const listUrl = `/api/weather-gov/products/types/METAR/locations/${locationCandidate}`;
+      const listJson = await weatherGovFetch<any>(listUrl, 3 * 60_000).catch(() => null);
+      products = Array.isArray(listJson?.["@graph"]) ? listJson["@graph"] : [];
+      if (products.length > 0) break;
+    }
+
     if (products.length === 0) return "";
 
     const sortedProducts = [...products].sort((a, b) => {
