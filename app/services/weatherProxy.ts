@@ -69,7 +69,36 @@ function toUpstreamUrlFromProxy(proxyUrl: string): string | null {
     return `https://api.weather.gov/${proxyUrl.slice("/api/weather/".length)}`;
   }
 
+  if (proxyUrl.startsWith("/api/aviationweather")) {
+    const parsed = new URL(proxyUrl, "https://proxy.local");
+    const type = (parsed.searchParams.get("type") || "taf").toLowerCase();
+    if (type !== "taf" && type !== "metar") return null;
+    parsed.searchParams.delete("type");
+    const query = parsed.searchParams.toString();
+    return `https://www.aviationweather.gov/api/data/${type}${query ? `?${query}` : ""}`;
+  }
+
   return null;
+}
+
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const clone = response.clone();
+  try {
+    return (await response.json()) as T;
+  } catch (error) {
+    let snippet = "";
+    try {
+      snippet = (await clone.text()).trim().replace(/\s+/g, " ").slice(0, 220);
+    } catch {
+      // ignore
+    }
+    const contentType = clone.headers.get("content-type") || "unknown";
+    const details = snippet ? ` Body starts with: ${snippet}` : "";
+    throw new Error(
+      `Invalid JSON response (status ${clone.status}, content-type ${contentType}).${details}`,
+      { cause: error },
+    );
+  }
 }
 
 /** Remove entries that are well past their grace period. */
@@ -107,7 +136,14 @@ export async function cachedFetch<T = any>(
   const isOpenMeteoProxyUrl =
     proxyUrl.startsWith("/api/open-meteo/forecast?") ||
     proxyUrl.startsWith("/api/openmeteo/");
-  const allowDirectUpstreamFallback = !proxyUrl.startsWith("/api/") || isOpenMeteoProxyUrl;
+  const isWeatherGovProxyUrl =
+    proxyUrl.startsWith("/api/weather-gov/") || proxyUrl.startsWith("/api/weather/");
+  const isAviationWeatherProxyUrl = proxyUrl.startsWith("/api/aviationweather");
+  const allowDirectUpstreamFallback =
+    !proxyUrl.startsWith("/api/") ||
+    isOpenMeteoProxyUrl ||
+    isWeatherGovProxyUrl ||
+    isAviationWeatherProxyUrl;
   const upstreamFallbackUrl = allowDirectUpstreamFallback ? toUpstreamUrlFromProxy(proxyUrl) : null;
 
   // 1. Cache hit?
@@ -153,25 +189,43 @@ export async function cachedFetch<T = any>(
       };
 
       let response: Response;
+      let usedUrl: "proxy" | "upstream" = "proxy";
       try {
         response = await tryFetchWithRetries(proxyUrl);
       } catch (e) {
         if (upstreamFallbackUrl) {
+          usedUrl = "upstream";
           response = await tryFetchWithRetries(upstreamFallbackUrl);
         } else {
           throw e;
         }
       }
 
-      if (!response.ok && upstreamFallbackUrl) {
+      if (!response.ok && upstreamFallbackUrl && usedUrl === "proxy") {
         // If the proxy is blocked upstream (403/5xx), try from the browser directly.
+        usedUrl = "upstream";
         response = await tryFetchWithRetries(upstreamFallbackUrl);
       }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      const data = await response.json();
+
+      let data: T;
+      try {
+        data = await parseJsonResponse<T>(response);
+      } catch (error) {
+        if (upstreamFallbackUrl && usedUrl === "proxy") {
+          const upstream = await tryFetchWithRetries(upstreamFallbackUrl);
+          if (!upstream.ok) {
+            throw new Error(`HTTP ${upstream.status}: ${upstream.statusText}`, { cause: error });
+          }
+          data = await parseJsonResponse<T>(upstream);
+        } else {
+          throw error;
+        }
+      }
+
       responseCache.set(proxyUrl, { data, timestamp: Date.now() });
       return data as T;
     } catch (err) {

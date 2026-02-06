@@ -210,8 +210,9 @@ async function fetchRawTafFromAviationWeather(
   stationId: string,
 ): Promise<{ raw: string; issuanceTime: string }> {
   try {
+    const ids = stationIdCandidates(stationId).join(",");
     const response = await cachedFetch<any[] | Record<string, unknown>>(
-      `/api/aviationweather?type=taf&ids=${encodeURIComponent(stationId)}&format=json`,
+      `/api/aviationweather?type=taf&ids=${encodeURIComponent(ids)}&format=json`,
       undefined,
       5 * 60_000,
     );
@@ -286,8 +287,11 @@ export function useNearbyStations(lat: number, lon: number) {
       setStations(parsed);
     } catch (err: any) {
       console.error("[useNearbyStations]", err);
+      const message = String(err?.message || "");
       setError(
-        "Unable to fetch nearby stations from weather.gov. This feature is only available for US locations.",
+        message.includes("HTTP 404")
+          ? "Unable to fetch nearby stations from weather.gov. This feature is only available for US locations."
+          : "Unable to fetch nearby stations from weather.gov.",
       );
       setStations([]);
     } finally {
@@ -318,14 +322,29 @@ export function useMetar(stationId: string | null) {
 
     try {
       const url = `/api/weather-gov/stations/${stationId}/observations/latest`;
-      const json = await weatherGovFetch<any>(url, 3 * 60_000); // cache 3 min
+      let props: any = {};
+      try {
+        const json = await weatherGovFetch<any>(url, 3 * 60_000); // cache 3 min
+        props = json?.properties ?? {};
+      } catch (err) {
+        console.warn("[useMetar] weather.gov observation failed; falling back to AviationWeather", err);
+        props = {};
+      }
 
-      const props = json.properties ?? {};
       const weatherGovRaw = typeof props.rawMessage === "string" ? props.rawMessage.trim() : "";
       const aviationWeatherRaw = weatherGovRaw ? "" : await fetchRawMetarFromAviationWeather(stationId);
       const weatherGovProductRaw =
         weatherGovRaw || aviationWeatherRaw ? "" : await fetchRawMetarFromWeatherGovProducts(stationId);
       const rawMetar = weatherGovRaw || aviationWeatherRaw || weatherGovProductRaw;
+
+      const hasStructured =
+        typeof props.timestamp === "string" ||
+        typeof props.textDescription === "string" ||
+        props.temperature?.value != null ||
+        props.windSpeed?.value != null;
+      if (!rawMetar && !hasStructured) {
+        throw new Error("No METAR data available for this station.");
+      }
 
       const metar: MetarData = {
         raw: rawMetar,
@@ -415,7 +434,12 @@ export function useTaf(stationId: string | null) {
       });
     } catch (err: any) {
       console.error("[useTaf]", err);
-      setError("TAF not available — station may not issue terminal forecasts.");
+      const message = String(err?.message || "");
+      setError(
+        message.includes("HTTP 404")
+          ? "TAF not available — station may not issue terminal forecasts."
+          : "Unable to fetch TAF for this station.",
+      );
       setData(null);
     } finally {
       setLoading(false);

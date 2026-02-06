@@ -33,14 +33,12 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
     }
     requireRegex(routePath, /^[A-Za-z0-9\-\.,/]+$/, "path");
 
-    const upstreamUrl = `https://api.weather.gov/${routePath}`;
-
     const response = await fetchJsonWithCache({
       request,
       ctx: context,
       cacheKeyPath: `/api/weather-gov/${routePath}`,
       cacheQuery: incomingUrl.searchParams,
-      targetUrl: upstreamUrl,
+      targetUrl: `https://api.weather.gov/${routePath}${incomingUrl.search}`,
       ttlSeconds: 600,
       staleTtlSeconds: 3600,
       upstreamHeaders: buildUpstreamHeaders(env, "application/geo+json, application/json"),
