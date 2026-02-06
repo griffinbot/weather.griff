@@ -11,20 +11,9 @@
     "bindings": [
       {
         "name": "RATE_LIMITER",
-        "class_name": "RateLimiterDurableObject"
+        "class_name": "RateLimiterDurableObject",
+        "script_name": "new-weather-app-api"
       }
     ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["RateLimiterDurableObject"]
-    }
-  ]
-  // Secrets must be set in Cloudflare (not in git):
-  // - TIMEZONEDB_API_KEY
-  // - GOOGLE_ELEVATION_API_KEY
-  // Optional vars:
-  // - TFR_UPSTREAM_URL
-  // - AVIATIONALERTS_UPSTREAM_URL
+  }
 }
