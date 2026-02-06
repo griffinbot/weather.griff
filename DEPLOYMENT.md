@@ -67,13 +67,17 @@ npx wrangler secret put GOOGLE_ELEVATION_API_KEY
 ```sh
 pnpm install
 pnpm run build
-npx wrangler pages deploy dist --project-name weather-griff --config wrangler.jsonc
+npx wrangler pages deploy dist --project-name new-weather-app --config wrangler.jsonc
 ```
 
 ## 4. Bind custom domain
 
 In Cloudflare dashboard:
 
-1. `Workers & Pages` -> `weather-griff`
+1. `Workers & Pages` -> `new-weather-app`
 2. `Custom domains` -> `Set up a custom domain`
 3. Add `weather.griffmathews.com`
+
+## Note on Pages project name
+
+This repo currently deploys to the Cloudflare Pages project `new-weather-app` (e.g. `*.new-weather-app-7b4.pages.dev`).

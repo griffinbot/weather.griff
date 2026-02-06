@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "weather-griff",
+  "name": "new-weather-app",
   "compatibility_date": "2026-02-06",
   "pages_build_output_dir": "dist",
   "vars": {
