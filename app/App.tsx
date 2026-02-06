@@ -21,9 +21,9 @@ import { cachedFetch, weatherGovFetch } from "./services/weatherProxy";
 // Initial mock data to populate the app before any search
 const initialLocations = [
   { id: "1", name: "SeaTac, WA", lat: 47.4502, lon: -122.3088, airport: "KSEA" },
-  { id: "2", name: "Enumclaw, WA", lat: 47.1850, lon: -121.9644, airport: "WA77" },
+  { id: "2", name: "Boeing Field, WA", lat: 47.5300, lon: -122.3019, airport: "KBFI" },
   { id: "3", name: "Joint Base Lewis-McChord, WA", lat: 47.1376, lon: -122.4762, airport: "KTCM" },
-  { id: "4", name: "Boeing Field, WA", lat: 47.5300, lon: -122.3019, airport: "KBFI" },
+  { id: "4", name: "Renton Municipal, WA", lat: 47.4931, lon: -122.2162, airport: "KRNT" },
 ];
 
 interface SearchResult {
@@ -118,6 +118,13 @@ function normalizeAirportCode(value: string | undefined | null): string | null {
   return normalized;
 }
 
+function normalizeIcaoCode(value: string | undefined | null): string | null {
+  const normalized = normalizeAirportCode(value);
+  if (!normalized) return null;
+  if (!/^[A-Z]{4}$/.test(normalized)) return null;
+  return normalized;
+}
+
 function normalizeAirportSearchCode(value: string | undefined | null): string | null {
   const normalized = normalizeAirportCode(value);
   if (!normalized) return null;
@@ -135,16 +142,24 @@ function airportCodeFromUserSearch(
 }
 
 function bestAirportCodeFromResult(result: SearchResult): string | null {
+  const directIcao = normalizeIcaoCode(result.extratags?.icao);
+  if (directIcao) return directIcao;
+
+  const iata = normalizeAirportCode(result.extratags?.iata);
+  if (iata && /^[A-Z]{3}$/.test(iata) && isUSResult(result)) return `K${iata}`;
+
   return (
-    normalizeAirportCode(result.extratags?.icao) ||
-    normalizeAirportCode(result.extratags?.iata) ||
-    normalizeAirportCode(result.extratags?.ref) ||
-    normalizeAirportCode(result.extratags?.local_ref)
+    normalizeIcaoCode(result.extratags?.ref) ||
+    normalizeIcaoCode(result.extratags?.local_ref)
   );
 }
 
 function isPlaceholderAirportCode(code: string): boolean {
   return code === "ARPT" || code === "GPS";
+}
+
+function isIcaoAirportResult(result: SearchResult): boolean {
+  return bestAirportCodeFromResult(result) !== null;
 }
 
 function normalizeOfficeCode(value: unknown): string | null {
@@ -380,10 +395,11 @@ export default function App() {
           1800,
         );
         const usProxyResults = (proxyData ?? []).filter(isUSResult);
-        if (usProxyResults.length > 0) {
+        const airportProxyResults = usProxyResults.filter(isIcaoAirportResult);
+        if (airportProxyResults.length > 0) {
           if (!cancelled) {
             setSearchResults(
-              prioritizeSearchResults(dedupeByPlaceId(usProxyResults), query, userCoordinates),
+              prioritizeSearchResults(dedupeByPlaceId(airportProxyResults), query, userCoordinates),
             );
           }
           return;
@@ -406,10 +422,11 @@ export default function App() {
         ]);
 
         const usDirectResults = (directNominatim ?? []).filter(isUSResult);
-        if (usDirectResults.length > 0) {
+        const airportDirectResults = usDirectResults.filter(isIcaoAirportResult);
+        if (airportDirectResults.length > 0) {
           if (!cancelled) {
             setSearchResults(
-              prioritizeSearchResults(dedupeByPlaceId(usDirectResults), query, userCoordinates),
+              prioritizeSearchResults(dedupeByPlaceId(airportDirectResults), query, userCoordinates),
             );
           }
           return;
@@ -420,6 +437,7 @@ export default function App() {
 
         const mapped: SearchResult[] = results
           .filter((r) => (r.country_code ?? "").toUpperCase() === "US")
+          .filter(() => looksLikeAirportCode)
           .map((r) => ({
           place_id: r.id,
           lat: String(r.latitude),
@@ -432,11 +450,10 @@ export default function App() {
             state: r.admin1,
             country_code: r.country_code?.toLowerCase(),
           },
-          extratags: looksLikeAirportCode
-            ? (normalizedCodeQuery.length === 4
+          extratags:
+            normalizedCodeQuery.length === 4
               ? { icao: normalizedCodeQuery }
-              : { iata: normalizedCodeQuery, icao: `K${normalizedCodeQuery}` })
-            : undefined,
+              : { iata: normalizedCodeQuery, icao: `K${normalizedCodeQuery}` },
         }));
 
         if (!cancelled) {
@@ -460,11 +477,11 @@ export default function App() {
 
   // Helper to create location object from search result
   const createLocationFromResult = (result: SearchResult, preferredAirportCode?: string | null) => {
-    // Determine airport code (IATA > ICAO > Generic)
-    const airportLike = isAirportLike(result);
+    // Restrict saved/selected locations to ICAO airport identifiers.
     const resolvedAirportCode = bestAirportCodeFromResult(result);
-    const preferred = airportLike ? airportCodeFromUserSearch(preferredAirportCode, result) : null;
-    const airportCode = preferred || resolvedAirportCode || (airportLike ? "ARPT" : "GPS");
+    const preferred = airportCodeFromUserSearch(preferredAirportCode, result);
+    const airportCode = normalizeIcaoCode(preferred) || resolvedAirportCode;
+    if (!airportCode) return null;
 
     // Format the location name (City, State)
     let locationName = result.display_name.split(',')[0];
@@ -490,7 +507,7 @@ export default function App() {
       lat: parseFloat(result.lat),
       lon: parseFloat(result.lon),
       airport: airportCode,
-      airportLookupPending: airportLike && !preferred && !resolvedAirportCode,
+      airportLookupPending: false,
     };
   };
 
@@ -517,6 +534,7 @@ export default function App() {
   // Select a location from search (doesn't automatically save)
   const handleSelectLocation = (result: SearchResult) => {
     const nextLocation = createLocationFromResult(result, searchQuery);
+    if (!nextLocation) return;
 
     setSavedLocations((prev) => {
       const existing = prev.find((loc) => loc.id === nextLocation.id);
@@ -548,6 +566,7 @@ export default function App() {
   const handleSaveLocation = (result: SearchResult, e: React.MouseEvent) => {
     e.stopPropagation();
     const newLocation = createLocationFromResult(result, searchQuery);
+    if (!newLocation) return;
     
     setSavedLocations((prev) => {
       if (!prev.find((loc) => loc.id === newLocation.id)) {
@@ -570,11 +589,10 @@ export default function App() {
   };
 
   const getAirportCode = (result: SearchResult, preferredAirportCode?: string | null) => {
-    const preferred = isAirportLike(result) ? airportCodeFromUserSearch(preferredAirportCode, result) : null;
-    if (preferred) return preferred;
+    const preferred = airportCodeFromUserSearch(preferredAirportCode, result);
+    if (normalizeIcaoCode(preferred)) return preferred;
     const resolved = bestAirportCodeFromResult(result);
     if (resolved) return resolved;
-    if (isAirportLike(result)) return "ARPT";
     return null;
   };
 

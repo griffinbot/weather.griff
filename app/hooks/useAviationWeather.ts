@@ -102,19 +102,17 @@ function extractRawMetarFromUnknownPayload(payload: unknown): string {
 
   if (typeof payload === "object") {
     const record = payload as Record<string, unknown>;
-    const candidateFields = [
-      "rawOb",
-      "raw_text",
-      "rawText",
-      "raw",
-      "metar",
-      "METAR",
-    ];
+    const candidateFields = ["rawOb", "raw_text", "rawText", "raw", "metar", "METAR"];
     for (const field of candidateFields) {
       const value = record[field];
       if (typeof value === "string" && value.trim().length > 0) {
         return value.trim();
       }
+    }
+
+    for (const value of Object.values(record)) {
+      const nested = extractRawMetarFromUnknownPayload(value);
+      if (nested) return nested;
     }
   }
 
