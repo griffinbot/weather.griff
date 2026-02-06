@@ -28,6 +28,13 @@ export interface Env {
   GOOGLE_ELEVATION_API_KEY?: string;
   TFR_UPSTREAM_URL?: string;
   AVIATIONALERTS_UPSTREAM_URL?: string;
+  OPENAI_API_KEY?: string;
+  AI_INDEX_ADMIN_TOKEN?: string;
+  AI_CHAT_MODEL?: string;
+  AI_EMBEDDING_MODEL?: string;
+  OPENAI_API_BASE?: string;
+  BALLOONING_DOCS_BUCKET?: R2Bucket;
+  BALLOONING_VECTOR_INDEX?: any;
   RATE_LIMITER: DurableObjectNamespace<RateLimiterDurableObject>;
 }
 

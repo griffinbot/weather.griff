@@ -769,7 +769,7 @@ export default function App() {
   }, [activeTab]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f5f5f7] pb-8 sm:pb-[72px]">
+    <div className="flex flex-col min-h-screen bg-[#f5f5f7]">
       {/* Main Content Area with Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         {/* Top Navigation - Tab Menu */}
@@ -981,6 +981,8 @@ export default function App() {
               <SettingsPanel />
             </div>
           </TabsContent>
+
+          <Footer location={selectedLocation} />
         </div>
       </Tabs>
 
@@ -991,8 +993,6 @@ export default function App() {
         onClose={() => setIsAIPanelOpen(false)}
       />
 
-      {/* Footer */}
-      <Footer location={selectedLocation} />
     </div>
   );
 }

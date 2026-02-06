@@ -21,7 +21,7 @@ export function buildCorsHeaders(request: Request, env: Env): Headers {
   const allowed = getAllowedOrigin(request, env);
   const headers = new Headers();
   headers.set("Vary", "Origin");
-  headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   headers.set("Access-Control-Allow-Headers", "Content-Type");
   headers.set("Access-Control-Max-Age", "86400");
 

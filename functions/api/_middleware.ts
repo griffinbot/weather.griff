@@ -26,6 +26,7 @@ const CLIENT_LIMITS = {
   "googleelevation": { capacity: 120, refillPerSecond: 2 },
   "tfr": { capacity: 240, refillPerSecond: 4 },
   "aviationalerts": { capacity: 240, refillPerSecond: 4 },
+  "ai-openai": { capacity: 80, refillPerSecond: 1.5 },
 } as const;
 
 const PROVIDER_LIMITS = {
@@ -41,6 +42,7 @@ const PROVIDER_LIMITS = {
   "googleelevation": { capacity: 1000, refillPerSecond: 16 },
   "tfr": { capacity: 2400, refillPerSecond: 40 },
   "aviationalerts": { capacity: 2400, refillPerSecond: 40 },
+  "ai-openai": { capacity: 800, refillPerSecond: 12 },
 } as const;
 
 function getClientIp(request: Request): string {
@@ -66,6 +68,7 @@ function providerFromPath(pathname: string): keyof typeof CLIENT_LIMITS | null {
   if (pathname === "/api/googleelevation") return "googleelevation";
   if (pathname === "/api/tfr") return "tfr";
   if (pathname === "/api/aviationalerts") return "aviationalerts";
+  if (pathname.startsWith("/api/ai/")) return "ai-openai";
   return null;
 }
 
@@ -83,13 +86,17 @@ export async function onRequest(context: EventContext): Promise<Response> {
     return new Response(null, { status: 204, headers: buildCorsHeaders(request, env) });
   }
 
-  if (request.method !== "GET") {
-    return jsonError(405, "Method not allowed", request, env);
-  }
-
   const provider = providerFromPath(url.pathname);
   if (!provider) {
     return jsonError(404, "Unknown API route", request, env);
+  }
+
+  const expectsPost = provider === "ai-openai";
+  if (expectsPost && request.method !== "POST") {
+    return jsonError(405, "Method not allowed", request, env);
+  }
+  if (!expectsPost && request.method !== "GET") {
+    return jsonError(405, "Method not allowed", request, env);
   }
 
   const ip = getClientIp(request);

@@ -5,7 +5,9 @@
   "pages_build_output_dir": "dist",
   "vars": {
     "ALLOWED_ORIGIN": "https://weather.griffmathews.com",
-    "PROXY_USER_AGENT": "weather-griff-proxy/1.0 (contact: admin@griffmathews.com)"
+    "PROXY_USER_AGENT": "weather-griff-proxy/1.0 (contact: admin@griffmathews.com)",
+    "AI_CHAT_MODEL": "gpt-4o-mini",
+    "AI_EMBEDDING_MODEL": "text-embedding-3-small"
   },
   "durable_objects": {
     "bindings": [
@@ -15,11 +17,26 @@
         "script_name": "new-weather-app-api"
       }
     ]
-  }
+  },
+  "r2_buckets": [
+    {
+      "binding": "BALLOONING_DOCS_BUCKET",
+      "bucket_name": "weather-griff-ballooning-docs"
+    }
+  ],
+  "vectorize": [
+    {
+      "binding": "BALLOONING_VECTOR_INDEX",
+      "index_name": "weather-griff-ballooning"
+    }
+  ]
   // Secrets must be set in Cloudflare (not in git):
   // - TIMEZONEDB_API_KEY
   // - GOOGLE_ELEVATION_API_KEY
+  // - OPENAI_API_KEY
+  // - AI_INDEX_ADMIN_TOKEN
   // Optional vars:
   // - TFR_UPSTREAM_URL
   // - AVIATIONALERTS_UPSTREAM_URL
+  // - OPENAI_API_BASE
 }

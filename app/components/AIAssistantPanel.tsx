@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Sparkles, Cloud, Wind, Thermometer, Loader2 } from "lucide-react";
+import { X, Send, Sparkles, Cloud, Wind, Thermometer, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { ScrollArea } from "./ui/scroll-area";
 import { useWeather, getWindDirectionName, getCeiling, getFlightCategory } from "../hooks/useWeather";
+import type { ChatRequest, ChatResponse } from "../types/ai";
 
 interface Location {
   name: string;
@@ -23,13 +23,25 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  response?: ChatResponse;
+  isError?: boolean;
+}
+
+function createSessionId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function AIAssistantPanel({ location, isOpen, onClose }: AIAssistantPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [isResponding, setIsResponding] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { current, hourly, daily, loading } = useWeather(location.lat, location.lon);
+  const sessionIdRef = useRef<string>(createSessionId());
+  const { current, loading } = useWeather(location.lat, location.lon);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -41,66 +53,103 @@ export function AIAssistantPanel({ location, isOpen, onClose }: AIAssistantPanel
   // Reset messages when location changes
   useEffect(() => {
     setMessages([]);
+    setRequestError(null);
+    sessionIdRef.current = createSessionId();
   }, [location]);
 
-  const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+  const handleSendMessage = async () => {
+    const question = inputValue.trim();
+    if (!question || isResponding) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: inputValue,
+      content: question,
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
     setInputValue("");
+    setIsResponding(true);
+    setRequestError(null);
 
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
+    const history = nextMessages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      ts: message.timestamp.toISOString(),
+    })) as ChatRequest["messages"];
+
+    const payload: ChatRequest = {
+      sessionId: sessionIdRef.current,
+      location: {
+        name: location.name,
+        airport: location.airport,
+        lat: location.lat,
+        lon: location.lon,
+      },
+      messages: history,
+      userQuestion: question,
+      options: {
+        agentHint: "auto",
+        maxTokens: 700,
+      },
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25_000);
+
+    try {
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      let responseJson: any = null;
+      try {
+        responseJson = await response.json();
+      } catch {
+        responseJson = null;
+      }
+
+      if (!response.ok) {
+        const errorMessage = responseJson?.error || `Request failed with status ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      const chatResponse = responseJson as ChatResponse;
+      const aiMessage: Message = {
+        id: `assistant_${Date.now()}`,
         role: "assistant",
-        content: generateResponse(inputValue),
+        content: chatResponse.answer || "No response generated.",
         timestamp: new Date(),
+        response: chatResponse,
       };
-      setMessages((prev) => [...prev, aiResponse]);
-    }, 800);
-  };
-
-  const generateResponse = (question: string) => {
-    const lower = question.toLowerCase();
-
-    if (!current) {
-      return `Weather data is still loading for ${location.name}. Please try again in a moment.`;
+      setMessages((prev) => [...prev, aiMessage]);
+    } catch (error: any) {
+      const friendly =
+        error?.name === "AbortError"
+          ? "AI request timed out. Please try again."
+          : error?.message || "AI assistant is currently unavailable.";
+      setRequestError(friendly);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant_error_${Date.now()}`,
+          role: "assistant",
+          content: friendly,
+          timestamp: new Date(),
+          isError: true,
+        },
+      ]);
+    } finally {
+      clearTimeout(timeout);
+      setIsResponding(false);
     }
-
-    if (lower.includes("wind")) {
-      const next6h = hourly.slice(0, 6);
-      const maxGust = Math.max(...next6h.map(h => h.windGusts));
-      return `Current winds at ${location.airport}: ${getWindDirectionName(current.windDirection)} at ${current.windSpeed} kt, gusting ${current.windGusts} kt. Over the next 6 hours, gusts could reach ${maxGust} kt. ${current.windGusts > 20 ? "Use caution with crosswind operations." : "Conditions are manageable for most aircraft."}`;
-    }
-    if (lower.includes("forecast") || lower.includes("weather") || lower.includes("outlook")) {
-      const today = daily[0];
-      const tomorrow = daily[1];
-      return `Today at ${location.name}: ${today?.condition ?? current.condition}, high of ${today?.high ?? current.temperature}°F, low of ${today?.low ?? current.feelsLike}°F. Winds up to ${today?.windSpeed ?? current.windSpeed} kt gusting ${today?.windGusts ?? current.windGusts} kt. Tomorrow: ${tomorrow?.condition ?? "data unavailable"}, highs near ${tomorrow?.high ?? "—"}°F. ${today?.precipitationProbability > 40 ? `Precipitation likely (${today.precipitationProbability}% chance).` : "Low precipitation risk."}`;
-    }
-    if (lower.includes("ceiling") || lower.includes("cloud")) {
-      const ceiling = getCeiling(current.cloudCover);
-      return `Cloud cover at ${location.airport} is ${current.cloudCover}%, estimated ceiling ~${ceiling.toLocaleString()} ft AGL. ${current.cloudCover >= 90 ? "Overcast skies — check for IFR conditions." : current.cloudCover >= 50 ? "Scattered to broken layer present." : "Mostly clear skies above."}`;
-    }
-    if (lower.includes("temperature") || lower.includes("temp")) {
-      return `Current temperature at ${location.airport}: ${current.temperature}°F (feels like ${current.feelsLike}°F). Dew point at ${current.dewPoint}°F, humidity ${current.humidity}%. ${Math.abs(current.temperature - current.dewPoint) < 5 ? "Temperature-dewpoint spread is narrow — fog or low clouds possible." : "Good spread between temp and dewpoint."}`;
-    }
-    if (lower.includes("fly") || lower.includes("vfr") || lower.includes("ifr")) {
-      const ceiling = getCeiling(current.cloudCover);
-      const cat = getFlightCategory(current.visibility, ceiling);
-      return `Current flight conditions at ${location.airport}: ${cat.category}. Visibility ${current.visibility} mi, estimated ceiling ${ceiling.toLocaleString()} ft, winds ${current.windSpeed} kt gusting ${current.windGusts} kt. ${cat.category === "VFR" ? "Good for VFR operations." : cat.category === "MVFR" ? "Marginal VFR — exercise caution." : "IFR conditions — instrument rating required."}`;
-    }
-    if (lower.includes("pressure") || lower.includes("altimeter")) {
-      return `Current altimeter setting at ${location.airport}: ${current.pressure} inHg (${Math.round(current.pressure / 0.02953)} hPa). ${current.pressure > 30.1 ? "High pressure in the area — generally stable conditions." : current.pressure < 29.9 ? "Low pressure present — watch for changing conditions." : "Pressure is near standard."}`;
-    }
-
-    return `Current conditions at ${location.name} (${location.airport}): ${current.condition}, ${current.temperature}°F, winds ${getWindDirectionName(current.windDirection)} at ${current.windSpeed} kt. You can ask about winds, clouds, temperature, flight conditions, or the forecast.`;
   };
 
   if (!isOpen) return null;
@@ -206,13 +255,13 @@ export function AIAssistantPanel({ location, isOpen, onClose }: AIAssistantPanel
             </div>
             <h3 className="font-semibold text-gray-900 mb-2">Ask me about the weather</h3>
             <p className="text-sm text-gray-500 mb-4">
-              I use live Open-Meteo data to answer your questions about conditions, winds, forecasts, and more.
+              I use live weather data plus ballooning references to build operational briefings.
             </p>
             <div className="text-xs text-gray-400 space-y-1">
               <p>Try asking:</p>
-              <p>"What are the winds like?"</p>
-              <p>"Is it VFR right now?"</p>
-              <p>"What's the forecast?"</p>
+              <p>"Summarize launch risk for the next 3 hours."</p>
+              <p>"What does drift look like after sunrise?"</p>
+              <p>"What checks should I run before launch?"</p>
             </div>
           </div>
         ) : (
@@ -225,7 +274,9 @@ export function AIAssistantPanel({ location, isOpen, onClose }: AIAssistantPanel
                 className={`max-w-[85%] rounded-2xl px-4 py-3 ${
                   message.role === "user"
                     ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-900 border border-gray-200"
+                    : message.isError
+                      ? "bg-red-50 text-red-900 border border-red-200"
+                      : "bg-white text-gray-900 border border-gray-200"
                 }`}
               >
                 {message.role === "assistant" && (
@@ -235,6 +286,72 @@ export function AIAssistantPanel({ location, isOpen, onClose }: AIAssistantPanel
                   </div>
                 )}
                 <p className="text-sm leading-relaxed">{message.content}</p>
+
+                {message.role === "assistant" && message.response && (
+                  <div className="mt-3 space-y-2">
+                    {message.response.sections.map((section) => (
+                      <div key={section.title} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{section.title}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-gray-700">{section.content}</p>
+                      </div>
+                    ))}
+
+                    {message.response.sources.length > 0 && (
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Sources</p>
+                        <div className="mt-1 space-y-1">
+                          {message.response.sources.slice(0, 4).map((source, idx) => (
+                            <div key={`${source.title}_${idx}`} className="text-xs text-gray-600">
+                              {source.url ? (
+                                <a
+                                  href={source.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  {source.title}
+                                </a>
+                              ) : (
+                                <span>{source.title}</span>
+                              )}
+                              {source.excerpt ? (
+                                <p className="text-[11px] text-gray-500 mt-0.5">{source.excerpt}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {message.response.agentTrace.map((agent) => (
+                        <span
+                          key={agent}
+                          className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700"
+                        >
+                          {agent}
+                        </span>
+                      ))}
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                        risk: {message.response.riskLevel}
+                      </span>
+                    </div>
+
+                    {message.response.followUps.length > 0 && (
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Follow-ups</p>
+                        <div className="mt-1 space-y-1">
+                          {message.response.followUps.slice(0, 2).map((item, idx) => (
+                            <p key={`${item}_${idx}`} className="text-xs text-gray-700">
+                              {item}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <p className={`text-[10px] mt-2 ${
                   message.role === "user" ? "text-blue-100" : "text-gray-400"
                 }`}>
@@ -244,28 +361,52 @@ export function AIAssistantPanel({ location, isOpen, onClose }: AIAssistantPanel
             </div>
           ))
         )}
+        {isResponding && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] rounded-2xl px-4 py-3 bg-white text-gray-900 border border-gray-200">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                <p className="text-sm text-gray-600">Generating operational briefing...</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Input Area */}
       <div className="p-4 bg-white border-t border-gray-200">
+        {requestError && (
+          <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5" />
+            <span>{requestError}</span>
+          </div>
+        )}
         <div className="flex gap-2">
           <Input
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-            placeholder="Ask about weather conditions..."
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void handleSendMessage();
+              }
+            }}
+            placeholder="Ask about ballooning weather, risk, or drift..."
             className="flex-1 rounded-xl bg-gray-50 border-gray-200 focus:ring-2 focus:ring-blue-500/20"
+            disabled={isResponding}
           />
           <Button
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim()}
+            onClick={() => {
+              void handleSendMessage();
+            }}
+            disabled={!inputValue.trim() || isResponding}
             className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4"
           >
-            <Send className="w-4 h-4" />
+            {isResponding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>
         <p className="text-[10px] text-gray-400 mt-2 text-center">
-          Powered by Open-Meteo live weather data
+          Advisory assistant only. Always verify with official weather sources before flight.
         </p>
       </div>
     </div>

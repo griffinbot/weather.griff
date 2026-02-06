@@ -77,7 +77,7 @@ export function WindDataTable({
   >("AGL");
   const [altitudeNormalized, setAltitudeNormalized] = useState<
     "normalized" | "raw"
-  >("raw");
+  >("normalized");
   const [altitudeUnit, setAltitudeUnit] = useState<"ft" | "m">(
     "ft",
   );

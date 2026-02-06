@@ -47,10 +47,11 @@ export interface WindAloftState {
   error: string | null;
 }
 
-// Normalized altitude targets (feet AGL) for the "normalized" view
+// Normalized altitude targets (feet AGL) for the "normalized" view.
+// These are fixed model levels so rows stay consistent hour-to-hour.
 export const NORMALIZED_ALTITUDES_AGL = [
-  100, 250, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 7000,
-  8000, 9000, 10000, 12000, 14000, 16000, 18000,
+  262, 394, 591, 774, 1486, 2218, 2969, 3734, 4521, 5328, 6155, 7001, 7874,
+  8766, 9688, 11608, 13652, 15843, 18202, 20716, 23537, 26616, 30057, 33967,
 ];
 
 // ---------------------------------------------------------------------------
@@ -157,15 +158,16 @@ export function interpolateToAGL(
   levels: PressureLevelRow[],
   targetAGL_ft: number,
 ): PressureLevelRow | null {
+  if (levels.length === 0) return null;
+
   // Sort levels ascending by AGL
   const sorted = [...levels].sort(
     (a, b) => a.altitudeAGL_ft - b.altitudeAGL_ft,
   );
 
-  // If target is below the lowest or above the highest, extrapolate from nearest
-  if (targetAGL_ft <= sorted[0].altitudeAGL_ft) return { ...sorted[0], altitudeAGL_ft: targetAGL_ft };
-  if (targetAGL_ft >= sorted[sorted.length - 1].altitudeAGL_ft)
-    return { ...sorted[sorted.length - 1], altitudeAGL_ft: targetAGL_ft };
+  // Out-of-range targets are not shown in normalized view.
+  if (targetAGL_ft < sorted[0].altitudeAGL_ft) return null;
+  if (targetAGL_ft > sorted[sorted.length - 1].altitudeAGL_ft) return null;
 
   // Find bounding pair
   for (let i = 0; i < sorted.length - 1; i++) {
