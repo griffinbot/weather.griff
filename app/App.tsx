@@ -46,6 +46,24 @@ interface SearchResult {
   };
 }
 
+interface OpenMeteoGeocodingResult {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  country_code?: string;
+  admin1?: string;
+  timezone?: string;
+}
+
+async function safeParseJson<T>(res: Response): Promise<T | null> {
+  try {
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [savedLocations, setSavedLocations] = useState(initialLocations);
@@ -78,37 +96,46 @@ export default function App() {
     const searchLocations = async () => {
       setIsSearching(true);
       try {
-        // We perform two parallel searches to ensure airports are found and prioritized:
-        // 1. Explicit "airport" search to find aerodromes
-        // 2. General search to find cities/towns if no airport is relevant
-        // Limited to United States only (countrycodes=us)
-        
-        const [airportRes, generalRes] = await Promise.all([
-          fetch(
-            `/api/nominatim/search?q=${encodeURIComponent(debouncedQuery + " airport")}&limit=5`
-          ),
-          fetch(
-            `/api/nominatim/search?q=${encodeURIComponent(debouncedQuery)}&limit=5`
-          )
-        ]);
-        
-        const airportData: SearchResult[] = airportRes.ok ? await airportRes.json() : [];
-        const generalData: SearchResult[] = generalRes.ok ? await generalRes.json() : [];
-
-        // Filter airport results to ensure they are actually airports/aerodromes
-        const validAirports = airportData.filter(item => 
-          item.class === 'aeroway' || 
-          item.type === 'aerodrome' || 
-          (item.display_name.toLowerCase().includes('airport'))
+        // Primary: Nominatim (best chance of finding airports + ICAO/IATA tags),
+        // but keep requests minimal to avoid getting blocked.
+        const nominatimRes = await fetch(
+          `/api/nominatim/search?q=${encodeURIComponent(debouncedQuery)}&limit=8`
         );
 
-        // Deduplicate: remove items from general search that are already in airport search
-        // We track IDs to prevent showing the same place twice
-        const airportIds = new Set(validAirports.map(item => item.place_id));
-        const filteredGeneral = generalData.filter(item => !airportIds.has(item.place_id));
-        
-        // Combine with airports first
-        setSearchResults([...validAirports, ...filteredGeneral]);
+        if (nominatimRes.ok) {
+          const nominatimData = (await safeParseJson<SearchResult[]>(nominatimRes)) ?? [];
+          if (nominatimData.length > 0) {
+            setSearchResults(nominatimData);
+            return;
+          }
+        }
+
+        // Fallback: Open-Meteo geocoding (more tolerant, but no airport tags).
+        const geoUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
+        geoUrl.searchParams.set("name", debouncedQuery);
+        geoUrl.searchParams.set("count", "8");
+        geoUrl.searchParams.set("language", "en");
+        geoUrl.searchParams.set("format", "json");
+
+        const geoRes = await fetch(geoUrl.toString());
+        const geoJson = await safeParseJson<{ results?: OpenMeteoGeocodingResult[] }>(geoRes);
+        const results = geoJson?.results ?? [];
+
+        const mapped: SearchResult[] = results.map((r) => ({
+          place_id: r.id,
+          lat: String(r.latitude),
+          lon: String(r.longitude),
+          display_name: [r.name, r.admin1, r.country_code].filter(Boolean).join(", "),
+          type: "place",
+          class: "place",
+          address: {
+            city: r.name,
+            state: r.admin1,
+            country_code: r.country_code?.toLowerCase(),
+          },
+        }));
+
+        setSearchResults(mapped);
 
       } catch (error) {
         console.error("Search failed:", error);

@@ -52,6 +52,26 @@ function toProxyUrl(url: string): string {
   return url;
 }
 
+function toUpstreamUrlFromProxy(proxyUrl: string): string | null {
+  if (proxyUrl.startsWith("/api/open-meteo/forecast?")) {
+    return `https://api.open-meteo.com/v1/forecast?${proxyUrl.split("?")[1] ?? ""}`;
+  }
+
+  if (proxyUrl.startsWith("/api/openmeteo/")) {
+    return `https://api.open-meteo.com/v1/${proxyUrl.slice("/api/openmeteo/".length)}`;
+  }
+
+  if (proxyUrl.startsWith("/api/weather-gov/")) {
+    return `https://api.weather.gov/${proxyUrl.slice("/api/weather-gov/".length)}`;
+  }
+
+  if (proxyUrl.startsWith("/api/weather/")) {
+    return `https://api.weather.gov/${proxyUrl.slice("/api/weather/".length)}`;
+  }
+
+  return null;
+}
+
 /** Remove entries that are well past their grace period. */
 function pruneCache() {
   const now = Date.now();
@@ -83,6 +103,7 @@ export async function cachedFetch<T = any>(
   ttl = DEFAULT_TTL_MS,
 ): Promise<T> {
   const proxyUrl = toProxyUrl(url);
+  const upstreamFallbackUrl = toUpstreamUrlFromProxy(proxyUrl);
 
   // 1. Cache hit?
   const cached = responseCache.get(proxyUrl);
@@ -97,17 +118,33 @@ export async function cachedFetch<T = any>(
   // 3. Make the request
   const promise = (async (): Promise<T> => {
     try {
-      let response: Response | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        response = await fetch(proxyUrl, options);
-        if ((response.status !== 429 && response.status !== 503) || attempt === 2) {
-          break;
+      const tryFetchWithRetries = async (requestUrl: string): Promise<Response> => {
+        let response: Response | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          response = await fetch(requestUrl, options);
+          if ((response.status !== 429 && response.status !== 503) || attempt === 2) {
+            break;
+          }
+          await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
         }
-        await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
+        if (!response) throw new Error("No response");
+        return response;
+      };
+
+      let response: Response;
+      try {
+        response = await tryFetchWithRetries(proxyUrl);
+      } catch (e) {
+        if (upstreamFallbackUrl) {
+          response = await tryFetchWithRetries(upstreamFallbackUrl);
+        } else {
+          throw e;
+        }
       }
 
-      if (!response) {
-        throw new Error("No response from proxy");
+      if (!response.ok && upstreamFallbackUrl) {
+        // If the proxy is blocked upstream (403/5xx), try from the browser directly.
+        response = await tryFetchWithRetries(upstreamFallbackUrl);
       }
 
       if (!response.ok) {
