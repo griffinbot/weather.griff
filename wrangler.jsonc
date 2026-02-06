@@ -11,14 +11,9 @@
     "bindings": [
       {
         "name": "RATE_LIMITER",
-        "class_name": "RateLimiterDurableObject"
+        "class_name": "RateLimiterDurableObject",
+        "script_name": "new-weather-app-api"
       }
     ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["RateLimiterDurableObject"]
-    }
-  ]
+  }
 }
