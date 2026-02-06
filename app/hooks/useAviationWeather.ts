@@ -82,6 +82,19 @@ function stationIdCandidates(stationId: string): string[] {
   return Array.from(new Set(candidates));
 }
 
+function extractStationId(feature: any): string {
+  const fromProps = String(feature?.properties?.stationIdentifier ?? "").trim().toUpperCase();
+  if (/^[A-Z]{4}$/.test(fromProps)) return fromProps;
+
+  const fromId = String(feature?.id ?? "").split("/").filter(Boolean).pop()?.toUpperCase() ?? "";
+  if (/^[A-Z]{4}$/.test(fromId)) return fromId;
+
+  const fromRef = String(feature?.properties?.["@id"] ?? "").split("/").filter(Boolean).pop()?.toUpperCase() ?? "";
+  if (/^[A-Z]{4}$/.test(fromRef)) return fromRef;
+
+  return "";
+}
+
 function extractRawMetarFromUnknownPayload(payload: unknown): string {
   if (!payload) return "";
 
@@ -273,8 +286,9 @@ export function useNearbyStations(lat: number, lon: number) {
           const coords = f.geometry?.coordinates ?? [0, 0]; // [lon, lat]
           const sLat = coords[1];
           const sLon = coords[0];
+          const resolvedStationId = extractStationId(f);
           return {
-            stationId: props.stationIdentifier ?? "",
+            stationId: resolvedStationId,
             name: props.name ?? "Unknown",
             lat: sLat,
             lon: sLon,
@@ -316,12 +330,17 @@ export function useMetar(stationId: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchMetar = useCallback(async () => {
-    if (!stationId) return;
+    const normalizedStationId = stationId?.trim().toUpperCase() ?? "";
+    if (!/^[A-Z]{4}$/.test(normalizedStationId)) {
+      setError("METAR requires an ICAO airport code (e.g., KSEA).");
+      setData(null);
+      return;
+    }
     setLoading(true);
     setError(null);
 
     try {
-      const url = `/api/weather-gov/stations/${stationId}/observations/latest`;
+      const url = `/api/weather-gov/stations/${normalizedStationId}/observations/latest`;
       let props: any = {};
       try {
         const json = await weatherGovFetch<any>(url, 3 * 60_000); // cache 3 min
@@ -332,9 +351,9 @@ export function useMetar(stationId: string | null) {
       }
 
       const weatherGovRaw = typeof props.rawMessage === "string" ? props.rawMessage.trim() : "";
-      const aviationWeatherRaw = weatherGovRaw ? "" : await fetchRawMetarFromAviationWeather(stationId);
+      const aviationWeatherRaw = weatherGovRaw ? "" : await fetchRawMetarFromAviationWeather(normalizedStationId);
       const weatherGovProductRaw =
-        weatherGovRaw || aviationWeatherRaw ? "" : await fetchRawMetarFromWeatherGovProducts(stationId);
+        weatherGovRaw || aviationWeatherRaw ? "" : await fetchRawMetarFromWeatherGovProducts(normalizedStationId);
       const rawMetar = weatherGovRaw || aviationWeatherRaw || weatherGovProductRaw;
 
       const hasStructured =

@@ -107,6 +107,20 @@ export function WindDataTable({
     isSurface?: boolean;
   };
 
+
+  function getLowLevelWindStats(rows: DisplayRow[]) {
+    const lowLevelRows = rows.filter((row) => row.altitudeAGL_ft <= 1500);
+    if (lowLevelRows.length === 0) return { averageMph: 0, gustMph: 0 };
+
+    const totalSpeed = lowLevelRows.reduce((sum, row) => sum + row.windSpeed, 0);
+    const averageMph = Math.round(totalSpeed / lowLevelRows.length);
+    const gustMph = Math.round(
+      lowLevelRows.reduce((max, row) => Math.max(max, row.windSpeed), 0),
+    );
+
+    return { averageMph, gustMph };
+  }
+
   /** Build rows for a single hour based on current settings. */
   function buildRows(hour: WindAloftHour): DisplayRow[] {
     const rows: DisplayRow[] = [];
@@ -667,6 +681,7 @@ export function WindDataTable({
           {hours.map((hour, hourIndex) => {
             const isNow = hourIndex === nowIndex;
             const rows = buildRows(hour);
+            const { averageMph, gustMph } = getLowLevelWindStats(rows);
             const daytime = isDaytime(hour.time);
 
             return (
@@ -685,10 +700,10 @@ export function WindDataTable({
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm">
                     <span className="font-semibold">
-                      CIN {hour.cin}
+                      AVG ≤1500 {convertSpeed(averageMph)} {getSpeedUnitLabel()}
                     </span>
                     <span className="font-semibold">
-                      CAPE {hour.cape}
+                      GUST ≤1500 {convertSpeed(gustMph)} {getSpeedUnitLabel()}
                     </span>
                   </div>
                 </div>
