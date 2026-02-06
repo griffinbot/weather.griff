@@ -1,5 +1,10 @@
 import { MapPin, X, Cloud, Sun, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, Wind, CloudFog, Loader2 } from "lucide-react";
-import { useCurrentWeather, getWindDirectionName } from "../hooks/useWeather";
+import {
+  useCurrentWeather,
+  getWindDirectionName,
+  getCeiling,
+  getFlightCategory,
+} from "../hooks/useWeather";
 
 interface Location {
   id: string;
@@ -14,6 +19,7 @@ interface SavedLocationWidgetProps {
   selectedLocation: Location;
   onSelectLocation: (loc: Location) => void;
   onDeleteLocation: (id: string, e: React.MouseEvent) => void;
+  compactOnMobile?: boolean;
 }
 
 function WeatherIcon({ iconType, className }: { iconType: string; className?: string }) {
@@ -55,6 +61,8 @@ function LocationCard({
   onDelete: (e: React.MouseEvent) => void;
 }) {
   const { data: weather, loading } = useCurrentWeather(loc.lat, loc.lon);
+  const flightCat =
+    weather ? getFlightCategory(weather.visibility, getCeiling(weather.cloudCover)) : null;
 
   return (
     <div
@@ -108,8 +116,17 @@ function LocationCard({
             </div>
           </div>
 
-          {/* Condition text */}
-          <div className="text-[10px] text-gray-500 mb-1.5 truncate">{weather.condition}</div>
+          {/* Condition text + Flight category */}
+          <div className="flex items-center gap-1.5 mb-1.5 min-w-0">
+            <div className="text-[10px] text-gray-500 truncate">{weather.condition}</div>
+            {flightCat && (
+              <span
+                className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${flightCat.bgColor} ${flightCat.color}`}
+              >
+                {flightCat.category}
+              </span>
+            )}
+          </div>
 
           {/* Wind + Humidity row */}
           <div className="flex items-center gap-3 text-[10px] text-gray-500">
@@ -130,32 +147,109 @@ function LocationCard({
   );
 }
 
+function CompactLocationCard({
+  loc,
+  isSelected,
+  onSelect,
+  onDelete,
+}: {
+  loc: Location;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <div
+      onClick={onSelect}
+      className={`relative flex-shrink-0 rounded-xl px-3 py-2 cursor-pointer transition-all duration-200 min-w-[160px] max-w-[200px] group ${
+        isSelected
+          ? "bg-white shadow-sm border-2 border-blue-500"
+          : "bg-white/80 border border-gray-200 hover:bg-white hover:border-gray-300"
+      }`}
+    >
+      <button
+        onClick={onDelete}
+        className={`absolute top-1.5 right-1.5 p-1 rounded-full transition-all ${
+          isSelected
+            ? "text-gray-400 hover:text-red-500 hover:bg-red-50"
+            : "text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100"
+        }`}
+        title="Remove location"
+      >
+        <X className="w-3 h-3" />
+      </button>
+
+      <div className="flex items-center gap-1.5 pr-5 min-w-0">
+        <MapPin className={`w-3 h-3 flex-shrink-0 ${isSelected ? "text-blue-500" : "text-gray-400"}`} />
+        <span className="text-xs font-semibold text-gray-800 truncate">{loc.name}</span>
+        <span className="text-[9px] font-mono font-bold text-blue-600 bg-blue-50 px-1 py-0.5 rounded flex-shrink-0">
+          {loc.airport}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function SavedLocationWidget({
   locations,
   selectedLocation,
   onSelectLocation,
   onDeleteLocation,
+  compactOnMobile = false,
 }: SavedLocationWidgetProps) {
   if (locations.length === 0) return null;
 
   return (
-    <div className="bg-[#f5f5f7] px-3 sm:px-6 py-3 border-b border-gray-200">
+    <div
+      className={`bg-[#f5f5f7] px-3 sm:px-6 border-b border-gray-200 transition-all duration-300 ${
+        compactOnMobile
+          ? "py-1.5 sticky top-0 z-40 shadow-sm"
+          : "py-3"
+      }`}
+    >
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-        <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold flex-shrink-0">
+        <span
+          className={`text-[10px] uppercase tracking-wider text-gray-400 font-semibold flex-shrink-0 ${
+            compactOnMobile ? "hidden sm:inline" : ""
+          }`}
+        >
           Locations
         </span>
         <div
-          className="flex items-center gap-2 sm:gap-3 overflow-x-auto w-full sm:flex-1 pb-1"
+          className={`flex items-center overflow-x-auto w-full sm:flex-1 pb-1 transition-all duration-300 ${
+            compactOnMobile ? "gap-2" : "gap-2 sm:gap-3"
+          }`}
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {locations.map((loc) => (
-            <LocationCard
-              key={loc.id}
-              loc={loc}
-              isSelected={selectedLocation.id === loc.id}
-              onSelect={() => onSelectLocation(loc)}
-              onDelete={(e) => onDeleteLocation(loc.id, e)}
-            />
+            compactOnMobile ? (
+              <div key={loc.id}>
+                <div className="block sm:hidden">
+                  <CompactLocationCard
+                    loc={loc}
+                    isSelected={selectedLocation.id === loc.id}
+                    onSelect={() => onSelectLocation(loc)}
+                    onDelete={(e) => onDeleteLocation(loc.id, e)}
+                  />
+                </div>
+                <div className="hidden sm:block">
+                  <LocationCard
+                    loc={loc}
+                    isSelected={selectedLocation.id === loc.id}
+                    onSelect={() => onSelectLocation(loc)}
+                    onDelete={(e) => onDeleteLocation(loc.id, e)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <LocationCard
+                key={loc.id}
+                loc={loc}
+                isSelected={selectedLocation.id === loc.id}
+                onSelect={() => onSelectLocation(loc)}
+                onDelete={(e) => onDeleteLocation(loc.id, e)}
+              />
+            )
           ))}
         </div>
       </div>

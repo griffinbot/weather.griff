@@ -1,5 +1,4 @@
 import { ArrowUp, Wind, Cloud, Sun, CloudRain, CloudSnow, CloudLightning, CloudDrizzle, CloudFog } from "lucide-react";
-import { ScrollArea } from "./ui/scroll-area";
 import { HourlyForecastData, getWindDirectionName } from "../hooks/useWeather";
 
 interface Location {
@@ -59,8 +58,11 @@ export function HourlyForecast({ location, hourlyData }: HourlyForecastProps) {
         <p className="text-sm text-gray-500">Next 24 hours — live data from Open-Meteo</p>
       </div>
 
-      <ScrollArea className="w-full">
-        <div className="flex gap-3 pb-2">
+      <div
+        className="w-full overflow-x-auto overscroll-x-contain"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
+        <div className="flex gap-3 pb-2 w-max pr-1">
           {data.map((hour, index) => (
             <div
               key={index}
@@ -123,7 +125,7 @@ export function HourlyForecast({ location, hourlyData }: HourlyForecastProps) {
             </div>
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }

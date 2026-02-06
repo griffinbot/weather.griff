@@ -623,7 +623,7 @@ export function WindDataTable({
       <div className="border-t border-gray-100 px-4 sm:px-6 pb-4 sm:pb-6">
         <div
           ref={scrollRef}
-          className="flex gap-2 sm:gap-4 py-4 overflow-x-auto overscroll-x-contain touch-pan-x"
+          className="flex gap-2 sm:gap-4 py-4 overflow-x-auto overscroll-x-contain"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {hours.map((hour, hourIndex) => {

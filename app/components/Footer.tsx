@@ -15,7 +15,10 @@ export function Footer({ location }: FooterProps) {
   const { lastUpdated } = useWeather(location.lat, location.lon);
 
   return (
-    <footer className="sticky bottom-0 z-40 bg-white/95 backdrop-blur border-t border-gray-200 py-2 px-3 sm:px-6">
+    <footer
+      className="fixed left-0 right-0 bottom-[-30px] sm:bottom-0 z-50 bg-white/95 backdrop-blur border-t border-gray-200 py-2 px-3 sm:px-6"
+      style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
+    >
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 text-[11px] sm:text-xs text-gray-500">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <img
@@ -32,8 +35,6 @@ export function Footer({ location }: FooterProps) {
               hour12: true
             }) : 'loading...'}
           </span>
-          <span className="hidden sm:inline text-gray-300">•</span>
-          <span className="hidden sm:inline">Made by Griff</span>
         </div>
         <span className="px-2 py-1 sm:px-3 sm:py-1.5 bg-gray-100 text-gray-700 rounded-lg flex-shrink-0">
           Made by Griff

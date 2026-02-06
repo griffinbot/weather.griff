@@ -306,6 +306,7 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [userCoordinates, setUserCoordinates] = useState<UserCoordinates | null>(null);
+  const [isMobileLocationCardsCollapsed, setIsMobileLocationCardsCollapsed] = useState(false);
   const resolvingAirportIdsRef = useRef<Set<string>>(new Set());
   const prefetchKeysRef = useRef<Set<string>>(new Set());
 
@@ -742,10 +743,35 @@ export default function App() {
     };
   }, [selectedLocation.lat, selectedLocation.lon, selectedLocation.airport]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
+    const shouldUseCompactMode = () =>
+      isMobileViewport() && (activeTab === "overview" || activeTab === "wind-viz");
+
+    const updateCompactState = () => {
+      if (!shouldUseCompactMode()) {
+        setIsMobileLocationCardsCollapsed(false);
+        return;
+      }
+      const next = window.scrollY > 110;
+      setIsMobileLocationCardsCollapsed((prev) => (prev === next ? prev : next));
+    };
+
+    updateCompactState();
+    window.addEventListener("scroll", updateCompactState, { passive: true });
+    window.addEventListener("resize", updateCompactState);
+    return () => {
+      window.removeEventListener("scroll", updateCompactState);
+      window.removeEventListener("resize", updateCompactState);
+    };
+  }, [activeTab]);
+
   return (
-    <div className="flex flex-col h-screen bg-[#f5f5f7] overflow-hidden">
+    <div className="flex flex-col min-h-screen bg-[#f5f5f7] pb-8 sm:pb-[72px]">
       {/* Main Content Area with Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         {/* Top Navigation - Tab Menu */}
         <div className="bg-white border-b border-gray-200 px-3 sm:px-6 pt-3 sm:pt-4 relative z-50">
           <div className="pb-3 sm:pb-4 space-y-2">
@@ -854,38 +880,38 @@ export default function App() {
               </Button>
             </div>
 
-            {/* Tab Navigation - compact on mobile */}
-            <div className="min-w-0 w-full sm:flex-1 sm:overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <TabsList className="bg-gray-100 p-1 rounded-xl mb-0 relative z-40 h-auto sm:h-9 w-full grid grid-cols-4 gap-1 sm:w-auto sm:inline-flex sm:whitespace-nowrap">
-                <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 min-w-0">
+            {/* Tab Navigation - single horizontal bar on mobile */}
+            <div className="min-w-0 w-full overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <TabsList className="bg-gray-100 p-1 rounded-xl mb-0 relative z-40 h-10 inline-flex w-max whitespace-nowrap gap-1">
+                <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
                   <Wind className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-[11px] sm:text-sm truncate">Overview</span>
+                  <span className="text-sm">Overview</span>
                 </TabsTrigger>
-                <TabsTrigger value="discussion" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 min-w-0">
+                <TabsTrigger value="discussion" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
                   <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-[11px] sm:text-sm truncate">Discussion</span>
+                  <span className="text-sm">Discussion</span>
                 </TabsTrigger>
-                <TabsTrigger value="airports" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 min-w-0">
+                <TabsTrigger value="airports" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
                   <Plane className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-[11px] sm:text-sm truncate">Airports</span>
+                  <span className="text-sm">Airports</span>
                 </TabsTrigger>
-                <TabsTrigger value="outlook" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 min-w-0">
+                <TabsTrigger value="outlook" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
                   <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-[11px] sm:text-sm truncate">7-Day</span>
+                  <span className="text-sm">7-Day</span>
                 </TabsTrigger>
-                <TabsTrigger value="wind-viz" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 min-w-0">
+                <TabsTrigger value="wind-viz" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
                   <Wind className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-[11px] sm:text-sm truncate">Wind Viz</span>
+                  <span className="text-sm">Wind Viz</span>
                 </TabsTrigger>
-                <TabsTrigger value="metadata" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 min-w-0">
+                <TabsTrigger value="metadata" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
                   <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-[11px] sm:text-sm truncate">Metadata</span>
+                  <span className="text-sm">Metadata</span>
                 </TabsTrigger>
-                <TabsTrigger value="flight" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 min-w-0">
+                <TabsTrigger value="flight" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
                   <Plane className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-[11px] sm:text-sm truncate">Flight Plan</span>
+                  <span className="text-sm">Flight Plan</span>
                 </TabsTrigger>
-                <TabsTrigger value="settings" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-2 sm:px-3 py-1.5 sm:py-2 min-w-0">
+                <TabsTrigger value="settings" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
                   <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </TabsTrigger>
               </TabsList>
@@ -899,10 +925,11 @@ export default function App() {
           selectedLocation={selectedLocation}
           onSelectLocation={setSelectedLocation}
           onDeleteLocation={handleDeleteLocation}
+          compactOnMobile={isMobileLocationCardsCollapsed}
         />
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto bg-[#f5f5f7]">
+        <div className="flex-1 bg-[#f5f5f7]">
           <TabsContent value="overview" className="m-0 h-full focus-visible:ring-0">
             <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
               {/* Current Weather */}
