@@ -103,7 +103,8 @@ export async function cachedFetch<T = any>(
   ttl = DEFAULT_TTL_MS,
 ): Promise<T> {
   const proxyUrl = toProxyUrl(url);
-  const upstreamFallbackUrl = toUpstreamUrlFromProxy(proxyUrl);
+  const allowDirectUpstreamFallback = !proxyUrl.startsWith("/api/");
+  const upstreamFallbackUrl = allowDirectUpstreamFallback ? toUpstreamUrlFromProxy(proxyUrl) : null;
 
   // 1. Cache hit?
   const cached = responseCache.get(proxyUrl);

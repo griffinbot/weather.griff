@@ -179,13 +179,6 @@ function resolveLatestProductPath(product: any): string | null {
   return null;
 }
 
-function officeMatchesProduct(product: any, officeCode: string): boolean {
-  const code = officeCode.toUpperCase();
-  const issuingOffice = String(product?.issuingOffice ?? product?.office ?? "").toUpperCase();
-  const wmo = String(product?.wmoCollectiveId ?? product?.productIdentifier ?? "").toUpperCase();
-  return issuingOffice.includes(`/${code}`) || issuingOffice.endsWith(code) || wmo.includes(code);
-}
-
 function normalizeMajorStationId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim().toUpperCase();
@@ -219,11 +212,11 @@ function pickNearbyMajorStations(features: any[], currentAirport: string): strin
   const unique: string[] = [];
   for (const row of rows) {
     if (!unique.includes(row.id)) unique.push(row.id);
-    if (unique.length >= 4) break;
+    if (unique.length >= 2) break;
   }
 
   if (current && !unique.includes(current)) {
-    return [current, ...unique].slice(0, 4);
+    return [current, ...unique].slice(0, 2);
   }
   return unique;
 }
@@ -646,6 +639,28 @@ export default function App() {
     prefetchKeysRef.current.add(prefetchKey);
 
     let cancelled = false;
+    let cancelIdlePrefetch: (() => void) | null = null;
+
+    const scheduleIdle = (task: () => void): (() => void) => {
+      if (typeof window === "undefined") {
+        task();
+        return () => undefined;
+      }
+      const withIdle = window as Window & {
+        requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+        cancelIdleCallback?: (handle: number) => void;
+      };
+      if (typeof withIdle.requestIdleCallback === "function") {
+        const handle = withIdle.requestIdleCallback(() => task(), { timeout: 1200 });
+        return () => {
+          if (typeof withIdle.cancelIdleCallback === "function") {
+            withIdle.cancelIdleCallback(handle);
+          }
+        };
+      }
+      const timeout = window.setTimeout(task, 250);
+      return () => window.clearTimeout(timeout);
+    };
 
     const prefetchRegionalData = async () => {
       const pointsPath = `/api/weather-gov/points/${selectedLocation.lat.toFixed(4)},${selectedLocation.lon.toFixed(4)}`;
@@ -665,51 +680,52 @@ export default function App() {
       const stationFeatures: any[] = Array.isArray(stations?.features) ? stations.features : [];
       const stationIds = pickNearbyMajorStations(stationFeatures, selectedLocation.airport);
 
-      if (stationIds.length > 0) {
-        await Promise.all(
-          stationIds.flatMap((stationId) => [
-            weatherGovFetch(`/api/weather-gov/stations/${stationId}/observations/latest`, 3 * 60_000).catch(() => null),
+      const primaryStation = stationIds[0];
+      if (primaryStation) {
+        await Promise.all([
+          weatherGovFetch(`/api/weather-gov/stations/${primaryStation}/observations/latest`, 3 * 60_000).catch(() => null),
+          cachedFetch(`/api/aviationweather?type=metar&ids=${encodeURIComponent(primaryStation)}&format=json`, undefined, 3 * 60_000).catch(() => null),
+        ]);
+      }
+
+      if (cancelled) return;
+
+      cancelIdlePrefetch = scheduleIdle(async () => {
+        if (cancelled) return;
+
+        const secondaryStationIds = stationIds.slice(1, 2);
+        for (const stationId of secondaryStationIds) {
+          if (cancelled) return;
+          await Promise.all([
             cachedFetch(`/api/aviationweather?type=metar&ids=${encodeURIComponent(stationId)}&format=json`, undefined, 3 * 60_000).catch(() => null),
             cachedFetch(`/api/aviationweather?type=taf&ids=${encodeURIComponent(stationId)}&format=json`, undefined, 5 * 60_000).catch(() => null),
-          ]),
-        );
-      }
+          ]);
+        }
 
-      if (!officeCode || cancelled) return;
+        if (!officeCode || cancelled) return;
+        const list = await weatherGovFetch<any>(`/api/weather-gov/products/types/AFD/locations/${officeCode}`, 45_000).catch(() => null);
+        const products: any[] = Array.isArray(list?.["@graph"]) ? list["@graph"] : [];
+        if (products.length === 0 || cancelled) return;
 
-      let products: any[] = [];
-      try {
-        const list = await weatherGovFetch<any>(`/api/weather-gov/products/types/AFD/locations/${officeCode}`, 45_000);
-        products = Array.isArray(list?.["@graph"]) ? list["@graph"] : [];
-      } catch {
-        // fallback below
-      }
+        products.sort((a, b) => {
+          const aTs = Date.parse(a?.issuanceTime ?? "");
+          const bTs = Date.parse(b?.issuanceTime ?? "");
+          const aValue = Number.isFinite(aTs) ? aTs : 0;
+          const bValue = Number.isFinite(bTs) ? bTs : 0;
+          return bValue - aValue;
+        });
 
-      if (products.length === 0) {
-        const list = await weatherGovFetch<any>("/api/weather-gov/products/types/AFD", 45_000).catch(() => null);
-        const fallbackProducts: any[] = Array.isArray(list?.["@graph"]) ? list["@graph"] : [];
-        products = fallbackProducts.filter((item) => officeMatchesProduct(item, officeCode));
-      }
-
-      if (products.length === 0 || cancelled) return;
-
-      products.sort((a, b) => {
-        const aTs = Date.parse(a?.issuanceTime ?? "");
-        const bTs = Date.parse(b?.issuanceTime ?? "");
-        const aValue = Number.isFinite(aTs) ? aTs : 0;
-        const bValue = Number.isFinite(bTs) ? bTs : 0;
-        return bValue - aValue;
+        const latestProductPath = resolveLatestProductPath(products[0]);
+        if (!latestProductPath || cancelled) return;
+        await weatherGovFetch(latestProductPath, 60_000).catch(() => null);
       });
-
-      const latestProductPath = resolveLatestProductPath(products[0]);
-      if (!latestProductPath || cancelled) return;
-      await weatherGovFetch(latestProductPath, 60_000).catch(() => null);
     };
 
     prefetchRegionalData();
 
     return () => {
       cancelled = true;
+      if (cancelIdlePrefetch) cancelIdlePrefetch();
     };
   }, [selectedLocation.lat, selectedLocation.lon, selectedLocation.airport]);
 
