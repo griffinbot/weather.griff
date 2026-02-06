@@ -407,8 +407,8 @@ export function getFlightCategory(visibility: number, ceiling: number): {
   color: string;
   bgColor: string;
 } {
-  if (visibility < 1 || ceiling < 500) return { category: "LIFR", color: "text-fuchsia-700", bgColor: "bg-fuchsia-100" };
-  if (visibility < 3 || ceiling < 1000) return { category: "IFR", color: "text-red-700", bgColor: "bg-red-100" };
-  if (visibility < 5 || ceiling < 3000) return { category: "MVFR", color: "text-blue-700", bgColor: "bg-blue-100" };
-  return { category: "VFR", color: "text-green-700", bgColor: "bg-green-100" };
+  if (visibility < 1 || ceiling < 500) return { category: "LIFR", color: "text-fuchsia-800", bgColor: "bg-fuchsia-100" };
+  if (visibility < 3 || ceiling < 1000) return { category: "IFR", color: "text-red-800", bgColor: "bg-red-100" };
+  if (visibility < 5 || ceiling < 3000) return { category: "MVFR", color: "text-blue-800", bgColor: "bg-blue-100" };
+  return { category: "VFR", color: "text-green-800", bgColor: "bg-green-100" };
 }

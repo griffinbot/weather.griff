@@ -623,7 +623,8 @@ export function WindDataTable({
       <div className="border-t border-gray-100 px-4 sm:px-6 pb-4 sm:pb-6">
         <div
           ref={scrollRef}
-          className="flex gap-2 sm:gap-4 py-4 overflow-x-auto"
+          className="flex gap-2 sm:gap-4 py-4 overflow-x-auto overscroll-x-contain touch-pan-x"
+          style={{ WebkitOverflowScrolling: "touch" }}
         >
           {hours.map((hour, hourIndex) => {
             const isNow = hourIndex === nowIndex;
@@ -679,7 +680,7 @@ export function WindDataTable({
                     <div>SPEED</div>
                   </div>
 
-                  <div className="max-h-[500px] overflow-y-auto">
+                  <div>
                     {rows.map((row, ri) => (
                       <div
                         key={ri}

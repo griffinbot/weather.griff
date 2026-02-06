@@ -750,6 +750,18 @@ export default function App() {
         <div className="bg-white border-b border-gray-200 px-3 sm:px-6 pt-3 sm:pt-4 relative z-50">
           <div className="pb-3 sm:pb-4 space-y-2">
             <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex-shrink-0">
+                <img
+                  src="/favicon.svg"
+                  alt="Griff"
+                  className="h-9 w-9 rounded-xl border border-gray-200 bg-black p-1.5 sm:hidden"
+                />
+                <img
+                  src="/griff-weather-logo.svg"
+                  alt="Griff Weather"
+                  className="hidden sm:block h-9 w-auto rounded-xl border border-gray-200 bg-white px-2 py-1"
+                />
+              </div>
             {/* Search Bar - Outside overflow container so dropdown is not clipped */}
               <div className="relative z-[100] flex-1 min-w-0 sm:flex-none sm:w-auto sm:flex-shrink-0">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />

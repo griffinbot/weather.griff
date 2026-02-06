@@ -225,6 +225,11 @@ export function SettingsPanel() {
       {/* About */}
       <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200">
         <div className="text-center space-y-2">
+          <img
+            src="/griff-weather-logo.svg"
+            alt="Griff Weather"
+            className="h-14 sm:h-16 w-auto mx-auto"
+          />
           <h4 className="font-semibold">Weather App for Aviation</h4>
           <p className="text-sm text-gray-600">Version 1.0.0</p>
           <p className="text-xs text-gray-500 mt-4">

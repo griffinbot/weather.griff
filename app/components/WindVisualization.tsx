@@ -87,6 +87,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
   const [startLonInput, setStartLonInput] = useState(location.lon.toFixed(4));
   const [inputError, setInputError] = useState<string | null>(null);
   const [mapLoadFailed, setMapLoadFailed] = useState(false);
+  const [mapLoadSucceeded, setMapLoadSucceeded] = useState(false);
 
   const plotRef = useRef<SVGSVGElement | null>(null);
   const { hours, loading, error } = useWindAloft(location.lat, location.lon);
@@ -198,6 +199,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
 
   useEffect(() => {
     setMapLoadFailed(false);
+    setMapLoadSucceeded(false);
   }, [mapImageUrl]);
 
   const speedBands: SpeedBands = trajectory?.speedBands ?? {
@@ -239,6 +241,11 @@ export function WindVisualization({ location }: WindVisualizationProps) {
     const valueMerc = latToMercatorYNormalized(lat);
     const y = ((valueMerc - topMerc) / (bottomMerc - topMerc || 1e-6)) * 100;
     return { x: clamp(x, 0, 100), y: clamp(y, 0, 100) };
+  };
+
+  const getPlotPoint = (eastNm: number, northNm: number) => {
+    const latLon = localNmToLatLon(eastNm, northNm, location.lat, location.lon);
+    return getPlotPointFromLatLon(latLon.lat, latLon.lon);
   };
 
   const getPath = (horizonMin: number, band: TrajectoryBand, side: "left" | "center" | "right") => {
@@ -435,7 +442,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
         <h3 className="font-semibold mb-1">Balloon Reachability at {selectedAltitude.toLocaleString()} ft MSL</h3>
         <p className="text-sm text-gray-500 mb-4">Start time {timeDisplay}</p>
 
-        <div className="relative w-full aspect-square bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 overflow-hidden">
+        <div className="relative w-full aspect-square bg-slate-100 rounded-xl border border-blue-200 overflow-hidden">
           {loading && hours.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center gap-2 text-gray-600">
               <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
@@ -453,6 +460,32 @@ export function WindVisualization({ location }: WindVisualizationProps) {
               preserveAspectRatio="none"
               onClick={handlePlotTap}
             >
+              {!mapLoadFailed && (
+                <image
+                  href={mapImageUrl}
+                  x={0}
+                  y={0}
+                  width={100}
+                  height={100}
+                  preserveAspectRatio="none"
+                  onLoad={() => setMapLoadSucceeded(true)}
+                  onError={() => {
+                    setMapLoadFailed(true);
+                    setMapLoadSucceeded(false);
+                  }}
+                />
+              )}
+              {mapLoadFailed && (
+                <rect x={0} y={0} width={100} height={100} fill="url(#fallbackBg)" />
+              )}
+              <defs>
+                <linearGradient id="fallbackBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#eff6ff" />
+                  <stop offset="100%" stopColor="#dbeafe" />
+                </linearGradient>
+              </defs>
+              <rect x={0} y={0} width={100} height={100} fill="rgba(15,23,42,0.08)" />
+
               {gridTicks.map((tick, index) => {
                 const pointX = getPlotPoint(tick, 0).x;
                 const pointY = getPlotPoint(0, tick).y;
@@ -538,7 +571,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
               <circle cx={startMarker.x} cy={startMarker.y} r={1.2} fill="#16a34a" stroke="#ffffff" strokeWidth={0.3} />
 
               {baselineEndpoints.map((endpoint) => {
-                const plot = plotPointFromLatLon(endpoint.lat, endpoint.lon);
+                const plot = getPlotPointFromLatLon(endpoint.lat, endpoint.lon);
                 const offset = labelOffsets[endpoint.horizonMin] ?? { dx: 1.5, dy: -1.5 };
                 return (
                   <g key={`endpoint-${endpoint.horizonMin}`}>
@@ -574,6 +607,18 @@ export function WindVisualization({ location }: WindVisualizationProps) {
               </div>
             </div>
           </div>
+
+          {!mapLoadFailed && !mapLoadSucceeded && (
+            <div className="absolute bottom-3 left-3 bg-white/90 rounded-md px-2 py-1 text-[11px] text-gray-600 shadow-sm">
+              Loading map tiles…
+            </div>
+          )}
+
+          {mapLoadFailed && (
+            <div className="absolute bottom-3 left-3 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 text-[11px] text-amber-800 shadow-sm">
+              Map unavailable, showing trajectory fallback view.
+            </div>
+          )}
         </div>
 
         {limitedByForecast && (
