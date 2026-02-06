@@ -1,7 +1,6 @@
 import { fetchJsonWithCache } from "../../_lib/cache";
 import {
   HttpError,
-  getProxyUserAgent,
   jsonError,
   requireAllowedQuery,
   requireRegex,
@@ -59,7 +58,6 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
       ttlSeconds: cachePolicy.ttlSeconds,
       staleTtlSeconds: cachePolicy.staleTtlSeconds,
       upstreamHeaders: {
-        "User-Agent": getProxyUserAgent(env),
         "Accept": "application/geo+json, application/json",
       },
     });

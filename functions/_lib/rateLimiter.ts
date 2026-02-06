@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 interface BucketConfig {
   capacity: number;
   refillPerSecond: number;

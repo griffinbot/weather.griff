@@ -1,7 +1,6 @@
 import { fetchJsonWithCache } from "../../_lib/cache";
 import {
   HttpError,
-  getProxyUserAgent,
   jsonError,
   requireAllowedQuery,
   withCors,
@@ -49,7 +48,6 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
       ttlSeconds: 3600,
       staleTtlSeconds: 7200,
       upstreamHeaders: {
-        "User-Agent": getProxyUserAgent(env),
         "Accept": "application/json",
       },
     });
