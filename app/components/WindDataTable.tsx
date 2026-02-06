@@ -308,10 +308,15 @@ export function WindDataTable({
 
   // ── Scroll to current time on load ────────────────────────────────
 
+  const getCardWidth = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 640) return 208;
+    return 280;
+  };
+
   useEffect(() => {
     if (scrollRef.current && hours.length > 0) {
       const container = scrollRef.current;
-      const cardWidth = 280;
+      const cardWidth = getCardWidth();
       const scrollPosition =
         cardWidth * nowIndex -
         container.clientWidth / 2 +
@@ -323,7 +328,7 @@ export function WindDataTable({
   const scrollToCurrentTime = () => {
     if (scrollRef.current && hours.length > 0) {
       const container = scrollRef.current;
-      const cardWidth = 280;
+      const cardWidth = getCardWidth();
       const scrollPosition =
         cardWidth * nowIndex -
         container.clientWidth / 2 +
@@ -369,8 +374,8 @@ export function WindDataTable({
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-      <div className="p-6 pb-4">
-        <div className="flex items-center justify-between">
+      <div className="p-4 sm:p-6 pb-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-lg mb-1">
@@ -385,11 +390,11 @@ export function WindDataTable({
               {Math.round(elevationFt).toLocaleString()} ft MSL
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* ── Settings dialog ───────────────── */}
             <Dialog>
               <DialogTrigger asChild>
-                <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors shadow-sm">
+                <button className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors shadow-sm">
                   <Settings className="w-4 h-4" />
                   <span className="font-medium text-sm">
                     Settings
@@ -594,7 +599,7 @@ export function WindDataTable({
 
             <button
               onClick={refetch}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors shadow-sm"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors shadow-sm"
               title="Refresh data"
             >
               <RefreshCw
@@ -604,21 +609,21 @@ export function WindDataTable({
 
             <button
               onClick={scrollToCurrentTime}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors shadow-sm"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors shadow-sm"
             >
               <Clock className="w-4 h-4" />
               <span className="font-medium text-sm">Now</span>
             </button>
-            <Wind className="w-6 h-6 text-blue-500" />
+            <Wind className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />
           </div>
         </div>
       </div>
 
       {/* ── Scrollable cards ─────────────────────────────────────── */}
-      <div className="border-t border-gray-100 px-6 pb-6">
+      <div className="border-t border-gray-100 px-4 sm:px-6 pb-4 sm:pb-6">
         <div
           ref={scrollRef}
-          className="flex gap-4 py-4 overflow-x-auto"
+          className="flex gap-2 sm:gap-4 py-4 overflow-x-auto"
         >
           {hours.map((hour, hourIndex) => {
             const isNow = hourIndex === nowIndex;
@@ -628,7 +633,7 @@ export function WindDataTable({
             return (
               <div
                 key={hourIndex}
-                className={`flex-shrink-0 w-[260px] rounded-2xl overflow-hidden transition-all ${
+                className={`flex-shrink-0 w-[200px] sm:w-[260px] rounded-2xl overflow-hidden transition-all ${
                   isNow
                     ? "bg-gradient-to-br from-blue-500 to-blue-600 ring-2 ring-blue-400 ring-offset-2"
                     : "bg-gradient-to-br from-blue-400 to-blue-500"
@@ -636,10 +641,10 @@ export function WindDataTable({
               >
                 {/* Header */}
                 <div className="p-4 pb-3 text-white">
-                  <div className="text-3xl font-light mb-2">
+                  <div className="text-2xl sm:text-3xl font-light mb-2">
                     {formatTime(hour.time)}
                   </div>
-                  <div className="flex items-center gap-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm">
                     <span className="font-semibold">
                       CIN {hour.cin}
                     </span>
@@ -667,7 +672,7 @@ export function WindDataTable({
 
                 {/* Altitude data table */}
                 <div className="bg-blue-600/40 backdrop-blur-sm">
-                  <div className="grid grid-cols-[1fr_0.8fr_1fr_0.8fr] gap-3 px-3 py-2 text-white text-xs font-semibold border-b border-white/20">
+                  <div className="grid grid-cols-[1.2fr_0.75fr_1fr_0.85fr] sm:grid-cols-[1fr_0.8fr_1fr_0.8fr] gap-2 sm:gap-3 px-3 py-2 text-white text-[11px] sm:text-xs font-semibold border-b border-white/20">
                     <div>ALT. ({altitudeFormat})</div>
                     <div>TEMP</div>
                     <div>DIRECTION</div>
@@ -678,15 +683,15 @@ export function WindDataTable({
                     {rows.map((row, ri) => (
                       <div
                         key={ri}
-                        className={`grid grid-cols-4 gap-2 px-3 py-1.5 text-sm border-b border-white/10 hover:bg-white/10 transition-colors ${
+                        className={`grid grid-cols-[1.2fr_0.75fr_1fr_0.85fr] sm:grid-cols-4 gap-2 px-3 py-1.5 text-[13px] sm:text-sm border-b border-white/10 hover:bg-white/10 transition-colors ${
                           row.isSurface ? "bg-white/5" : ""
                         }`}
                       >
                         {/* Altitude */}
-                        <div className="text-white font-medium">
+                        <div className="text-white font-medium whitespace-nowrap">
                           {getDisplayAltitude(row)}{" "}
                           {!row.isSurface && (
-                            <span className="text-[10px] opacity-70">
+                            <span className="inline-block ml-1 text-[10px] opacity-70">
                               {getAltitudeUnitLabel()}
                             </span>
                           )}
@@ -701,7 +706,7 @@ export function WindDataTable({
                         </div>
 
                         {/* Direction */}
-                        <div className="text-white font-medium flex items-center">
+                        <div className="text-white font-medium flex items-center whitespace-nowrap">
                           <span className="text-lg leading-none">
                             {getWindDirectionArrow(
                               row.windDirection,
@@ -714,7 +719,7 @@ export function WindDataTable({
 
                         {/* Speed */}
                         <div
-                          className={`font-semibold ${getSpeedColor(row.windSpeed)}`}
+                          className={`font-semibold whitespace-nowrap ${getSpeedColor(row.windSpeed)}`}
                         >
                           {convertSpeed(row.windSpeed)}{" "}
                           {getSpeedUnitLabel()}

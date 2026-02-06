@@ -72,9 +72,9 @@ function MetarDisplay({ stationId }: { stationId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <h4 className="font-semibold text-lg">{stationId} — METAR</h4>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 sm:self-auto">
           <span className="text-sm text-gray-500">
             {metar.timestamp
               ? new Date(metar.timestamp).toLocaleTimeString("en-US", {
@@ -110,7 +110,7 @@ function MetarDisplay({ stationId }: { stationId: string }) {
         <h5 className="font-semibold text-sm mb-3 text-blue-900">
           Decoded Information
         </h5>
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           <div>
             <span className="text-blue-700">Wind: </span>
             <span className="font-medium">
@@ -208,9 +208,9 @@ function TafDisplay({ stationId }: { stationId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <h4 className="font-semibold text-lg">{stationId} — TAF</h4>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 sm:self-auto">
           <span className="text-sm text-gray-500">
             {taf.issuanceTime
               ? `Issued ${new Date(taf.issuanceTime).toLocaleTimeString("en-US", {
@@ -297,10 +297,10 @@ export function AirportReports({ location }: AirportReportsProps) {
   const displayStations = stations.slice(0, 8);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-3 sm:p-6 max-w-6xl mx-auto space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between">
+      <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
+        <div className="flex items-start sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-semibold mb-2">Airport Reports</h2>
@@ -317,7 +317,7 @@ export function AirportReports({ location }: AirportReportsProps) {
       </div>
 
       {/* Station list */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+      <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold">Nearby Observation Stations</h3>
           <button
@@ -387,7 +387,7 @@ export function AirportReports({ location }: AirportReportsProps) {
       {selectedStationId && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
           <Tabs defaultValue="metar" className="w-full">
-            <div className="px-6 pt-6">
+            <div className="px-4 sm:px-6 pt-4 sm:pt-6">
               <TabsList className="bg-gray-100 p-1 rounded-xl">
                 <TabsTrigger
                   value="metar"
@@ -404,11 +404,11 @@ export function AirportReports({ location }: AirportReportsProps) {
               </TabsList>
             </div>
 
-            <TabsContent value="metar" className="p-6 pt-4">
+            <TabsContent value="metar" className="p-4 sm:p-6 pt-4">
               <MetarDisplay stationId={selectedStationId} />
             </TabsContent>
 
-            <TabsContent value="taf" className="p-6 pt-4">
+            <TabsContent value="taf" className="p-4 sm:p-6 pt-4">
               <TafDisplay stationId={selectedStationId} />
             </TabsContent>
           </Tabs>

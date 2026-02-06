@@ -59,7 +59,7 @@ function LocationCard({
   return (
     <div
       onClick={onSelect}
-      className={`relative flex-shrink-0 rounded-2xl p-3 cursor-pointer transition-all duration-200 min-w-[180px] max-w-[210px] group ${
+      className={`relative flex-shrink-0 rounded-2xl p-2.5 sm:p-3 cursor-pointer transition-all duration-200 min-w-[150px] sm:min-w-[180px] max-w-[190px] sm:max-w-[210px] group ${
         isSelected
           ? "bg-white shadow-md border-2 border-blue-500 ring-2 ring-blue-100"
           : "bg-white/70 border border-gray-200 hover:bg-white hover:shadow-sm hover:border-gray-300"
@@ -139,13 +139,13 @@ export function SavedLocationWidget({
   if (locations.length === 0) return null;
 
   return (
-    <div className="bg-[#f5f5f7] px-6 py-3 border-b border-gray-200">
-      <div className="flex items-center gap-3">
+    <div className="bg-[#f5f5f7] px-3 sm:px-6 py-3 border-b border-gray-200">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold flex-shrink-0">
           Locations
         </span>
         <div
-          className="flex items-center gap-3 overflow-x-auto flex-1 pb-1"
+          className="flex items-center gap-2 sm:gap-3 overflow-x-auto w-full sm:flex-1 pb-1"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {locations.map((loc) => (

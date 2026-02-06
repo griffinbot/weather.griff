@@ -75,17 +75,17 @@ export function CurrentWeather({ location }: CurrentWeatherProps) {
   };
 
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <h2 className="text-xl font-semibold">{location.name}</h2>
+    <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-gray-100">
+      <div className="flex flex-col gap-4 mb-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-0.5">
+              <h2 className="text-xl font-semibold leading-tight">{location.name}</h2>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${flightCat.bgColor} ${flightCat.color}`}>
                 {flightCat.category}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <p className="text-blue-600 text-xs font-mono font-semibold">{location.airport}</p>
               <span className="text-gray-300">•</span>
               <p className="text-gray-400 text-[10px] font-mono">
@@ -93,41 +93,43 @@ export function CurrentWeather({ location }: CurrentWeatherProps) {
               </p>
             </div>
           </div>
-          
+          <div className="text-right flex items-start gap-2 sm:gap-3 flex-shrink-0">
+            <WeatherIcon iconType={current.icon} className="w-8 h-8 sm:w-10 sm:h-10" />
+            <div>
+              <div className="text-3xl sm:text-4xl font-light leading-none">{current.temperature}°</div>
+              <div className="text-gray-500 text-xs mt-0.5">Feels like {current.feelsLike}°</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
           {/* Sunrise/Sunset Pills */}
           {todaySunrise && todaySunset && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-wrap gap-2">
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-br from-orange-50 to-yellow-50 rounded-xl">
                 <Sunrise className="w-3.5 h-3.5 text-orange-600" />
                 <span className="font-medium text-xs text-orange-700">{formatSunTime(todaySunrise)}</span>
               </div>
-              
+
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl">
                 <Sunset className="w-3.5 h-3.5 text-indigo-600" />
                 <span className="font-medium text-xs text-indigo-700">{formatSunTime(todaySunset)}</span>
               </div>
             </div>
           )}
-          
+
           <button
             onClick={() => setShowHourly(!showHourly)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl transition-colors"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl transition-colors w-full sm:w-auto sm:ml-auto"
           >
             <Clock className="w-4 h-4" />
             <span className="font-medium text-sm">View Hourly</span>
           </button>
         </div>
-        <div className="text-right flex items-start gap-3">
-          <WeatherIcon iconType={current.icon} className="w-10 h-10" />
-          <div>
-            <div className="text-4xl font-light">{current.temperature}°</div>
-            <div className="text-gray-500 text-xs mt-0.5">Feels like {current.feelsLike}°</div>
-          </div>
-        </div>
       </div>
 
       <div className="mb-4">
-        <div className="flex items-center gap-2 text-base">
+        <div className="flex flex-wrap items-center gap-2 text-base">
           <WeatherIcon iconType={current.icon} className="w-4 h-4" />
           <span>{current.condition}</span>
           {current.precipitation > 0 && (
@@ -139,7 +141,7 @@ export function CurrentWeather({ location }: CurrentWeatherProps) {
       </div>
 
       {/* Weather Stats Grid */}
-      <div className="grid grid-cols-6 gap-1.5 mb-1.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 mb-1.5">
         <div className="bg-gray-50 rounded-lg p-2">
           <div className="flex items-center gap-1 text-gray-500 text-[10px] mb-1">
             <Wind className="w-3 h-3" />

@@ -1,4 +1,4 @@
-import { Settings, Bell, Globe, Thermometer, Wind, Gauge } from "lucide-react";
+import { Settings, Bell, Globe, Thermometer, Wind, Gauge, Mail } from "lucide-react";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -232,6 +232,15 @@ export function SettingsPanel() {
           </p>
         </div>
       </div>
+
+      {/* Feedback */}
+      <a
+        href="mailto:griff@example.com?subject=Aviation Weather App - Bug Report"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-4 sm:p-5 flex items-center justify-center gap-2 font-semibold text-base shadow-sm transition-colors"
+      >
+        <Mail className="w-5 h-5" />
+        <span>Report a Bug</span>
+      </a>
     </div>
   );
 }
