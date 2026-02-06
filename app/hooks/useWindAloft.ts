@@ -5,8 +5,8 @@ import { openMeteoFetch } from "../services/weatherProxy";
 // Pressure levels we request from Open-Meteo (millibars)
 // ---------------------------------------------------------------------------
 export const PRESSURE_LEVELS = [
-  1000, 975, 950, 925, 900, 875, 850, 800, 750, 700, 650, 600, 550, 500, 450,
-  400, 350, 300, 250, 200,
+  1000, 950, 925, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350,
+  300, 250,
 ] as const;
 
 export type PressureLevel = (typeof PRESSURE_LEVELS)[number];
@@ -88,8 +88,8 @@ function buildUrl(lat: number, lon: number): string {
     temperature_unit: "fahrenheit",
     wind_speed_unit: "mph",
     timezone: "auto",
-    past_hours: "12",
-    forecast_hours: "12",
+    past_hours: "4",
+    forecast_hours: "8",
   });
 
   return `/api/open-meteo/forecast?${params}`;
@@ -214,7 +214,7 @@ export function useWindAloft(lat: number, lon: number): WindAloftState & { refet
 
     try {
       const url = buildUrl(lat, lon);
-      const json = await openMeteoFetch(url, 5 * 60_000);
+      const json = await openMeteoFetch(url, 10 * 60_000);
       if (abortRef.current) return;
       const parsed = parseResponse(json);
       setState({ ...parsed, loading: false, error: null });

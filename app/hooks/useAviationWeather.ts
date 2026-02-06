@@ -97,6 +97,45 @@ async function fetchRawMetarFromAviationWeather(stationId: string): Promise<stri
   }
 }
 
+async function fetchRawTafFromAviationWeather(
+  stationId: string,
+): Promise<{ raw: string; issuanceTime: string }> {
+  try {
+    const response = await cachedFetch<any[] | Record<string, unknown>>(
+      `/api/aviationweather?type=taf&ids=${encodeURIComponent(stationId)}&format=json`,
+      undefined,
+      5 * 60_000,
+    );
+
+    const first = Array.isArray(response) ? response[0] : response;
+    if (!first || typeof first !== "object") return { raw: "", issuanceTime: "" };
+
+    const rawCandidates = ["rawTAF", "raw_text", "rawText", "raw", "taf"];
+    let raw = "";
+    for (const field of rawCandidates) {
+      const value = (first as Record<string, unknown>)[field];
+      if (typeof value === "string" && value.trim().length > 0) {
+        raw = value.trim();
+        break;
+      }
+    }
+
+    const issuanceCandidates = ["issueTime", "issue_time", "issuanceTime", "obsTime"];
+    let issuanceTime = "";
+    for (const field of issuanceCandidates) {
+      const value = (first as Record<string, unknown>)[field];
+      if (typeof value === "string" && value.trim().length > 0) {
+        issuanceTime = value.trim();
+        break;
+      }
+    }
+
+    return { raw, issuanceTime };
+  } catch {
+    return { raw: "", issuanceTime: "" };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // useNearbyStations — fetches observation stations near a point
 // ---------------------------------------------------------------------------
@@ -227,6 +266,16 @@ export function useTaf(stationId: string | null) {
     setError(null);
 
     try {
+      const aviationWeatherTaf = await fetchRawTafFromAviationWeather(stationId);
+      if (aviationWeatherTaf.raw) {
+        setData({
+          raw: aviationWeatherTaf.raw,
+          issuanceTime: aviationWeatherTaf.issuanceTime,
+        });
+        setLoading(false);
+        return;
+      }
+
       // Step 1: get product listing
       const locId = icaoToLocationId(stationId);
       const listUrl = `/api/weather-gov/products/types/TAF/locations/${locId}`;

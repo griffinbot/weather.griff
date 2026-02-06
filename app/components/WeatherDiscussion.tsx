@@ -86,9 +86,16 @@ export function WeatherDiscussion({ location }: WeatherDiscussionProps) {
           throw new Error("Could not resolve NWS forecast office for this location.");
         }
 
-        const listUrl = `/api/weather-gov/products/types/AFD/locations/${officeCode}?_latest=${Math.floor(Date.now() / 300000)}`;
-        const listJson = await weatherGovFetch<any>(listUrl, 60_000);
-        const products: any[] = Array.isArray(listJson?.["@graph"]) ? listJson["@graph"] : [];
+        const primaryListUrl = `/api/weather-gov/products/types/AFD/locations/${officeCode}`;
+        const primaryListJson = await weatherGovFetch<any>(primaryListUrl, 45_000);
+        let products: any[] = Array.isArray(primaryListJson?.["@graph"]) ? primaryListJson["@graph"] : [];
+
+        if (products.length === 0) {
+          const fallbackListUrl = `/api/weather-gov/products?type=AFD&location=${officeCode}&limit=20`;
+          const fallbackListJson = await weatherGovFetch<any>(fallbackListUrl, 45_000);
+          products = Array.isArray(fallbackListJson?.["@graph"]) ? fallbackListJson["@graph"] : [];
+        }
+
         if (products.length === 0) {
           throw new Error("No Area Forecast Discussion products were found for this office.");
         }
@@ -113,21 +120,13 @@ export function WeatherDiscussion({ location }: WeatherDiscussionProps) {
           throw new Error("Latest Area Forecast Discussion product text was empty.");
         }
 
-        const officeInfo = await weatherGovFetch<any>(`/api/weather-gov/offices/${officeCode}`, 60 * 60_000)
-          .catch(() => null);
-        const officeName =
-          officeInfo?.name ||
-          officeInfo?.properties?.name ||
-          officeInfo?.properties?.description ||
-          officeCode;
-
         const issued = product?.issuanceTime || latestProduct?.issuanceTime || "";
         const sourceUrl = `https://forecast.weather.gov/product.php?site=nws&issuedby=${officeCode}&product=afd&format=ci&version=1&glossary=1&highlight=off`;
 
         if (!cancelled) {
           setData({
             title: "Area Forecast Discussion",
-            office: `National Weather Service ${officeName}`,
+            office: `National Weather Service ${officeCode}`,
             officeCode,
             issueTime: issued,
             content: parseDiscussionSection(rawText),

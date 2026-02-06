@@ -23,16 +23,16 @@ const responseCache = new Map<string, CacheEntry>();
 const pendingRequests = new Map<string, Promise<any>>();
 
 function parseRetryAfterMs(value: string | null, attempt: number): number {
-  if (!value) return Math.min(4000, 800 * (2 ** attempt));
+  if (!value) return Math.min(1500, 300 * (2 ** attempt));
   const asSeconds = Number.parseInt(value, 10);
   if (Number.isFinite(asSeconds) && asSeconds >= 0) {
-    return Math.min(10_000, asSeconds * 1000);
+    return Math.min(3000, asSeconds * 1000);
   }
   const asDate = Date.parse(value);
   if (Number.isFinite(asDate)) {
-    return Math.max(250, Math.min(10_000, asDate - Date.now()));
+    return Math.max(250, Math.min(3000, asDate - Date.now()));
   }
-  return Math.min(4000, 800 * (2 ** attempt));
+  return Math.min(1500, 300 * (2 ** attempt));
 }
 
 function sleep(ms: number): Promise<void> {
@@ -118,11 +118,27 @@ export async function cachedFetch<T = any>(
   // 3. Make the request
   const promise = (async (): Promise<T> => {
     try {
+      const fetchWithTimeout = async (
+        requestUrl: string,
+        timeoutMs = 4500,
+      ): Promise<Response> => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          return await fetch(requestUrl, {
+            ...options,
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+      };
+
       const tryFetchWithRetries = async (requestUrl: string): Promise<Response> => {
         let response: Response | null = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          response = await fetch(requestUrl, options);
-          if ((response.status !== 429 && response.status !== 503) || attempt === 2) {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          response = await fetchWithTimeout(requestUrl);
+          if ((response.status !== 429 && response.status !== 503) || attempt === 1) {
             break;
           }
           await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
