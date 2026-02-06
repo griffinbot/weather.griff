@@ -64,6 +64,64 @@ async function safeParseJson<T>(res: Response): Promise<T | null> {
   }
 }
 
+async function fetchJsonWithTimeout<T>(url: string, timeoutMs = 5500): Promise<T | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    return await safeParseJson<T>(res);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isAirportLike(result: SearchResult): boolean {
+  return (
+    !!result.extratags?.iata ||
+    !!result.extratags?.icao ||
+    result.class === "aeroway" ||
+    result.type === "aerodrome" ||
+    result.display_name.toLowerCase().includes("airport")
+  );
+}
+
+function dedupeByPlaceId(results: SearchResult[]): SearchResult[] {
+  const seen = new Set<number>();
+  const output: SearchResult[] = [];
+  for (const result of results) {
+    if (seen.has(result.place_id)) continue;
+    seen.add(result.place_id);
+    output.push(result);
+  }
+  return output;
+}
+
+function prioritizeSearchResults(results: SearchResult[], query: string): SearchResult[] {
+  const airportCodeQuery = query.trim().toUpperCase();
+  return [...results].sort((a, b) => {
+    const aAirport = isAirportLike(a) ? 1 : 0;
+    const bAirport = isAirportLike(b) ? 1 : 0;
+    if (aAirport !== bAirport) return bAirport - aAirport;
+
+    const aCode =
+      a.extratags?.icao?.toUpperCase() ||
+      a.extratags?.iata?.toUpperCase() ||
+      "";
+    const bCode =
+      b.extratags?.icao?.toUpperCase() ||
+      b.extratags?.iata?.toUpperCase() ||
+      "";
+    const aCodeMatch = aCode === airportCodeQuery ? 1 : 0;
+    const bCodeMatch = bCode === airportCodeQuery ? 1 : 0;
+    if (aCodeMatch !== bCodeMatch) return bCodeMatch - aCodeMatch;
+
+    return 0;
+  });
+}
+
 export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [savedLocations, setSavedLocations] = useState(initialLocations);
@@ -93,32 +151,54 @@ export default function App() {
       return;
     }
 
+    let cancelled = false;
+
     const searchLocations = async () => {
       setIsSearching(true);
       try {
-        // Primary: Nominatim (best chance of finding airports + ICAO/IATA tags),
-        // but keep requests minimal to avoid getting blocked.
-        const nominatimRes = await fetch(
-          `/api/nominatim/search?q=${encodeURIComponent(debouncedQuery)}&limit=8`
-        );
+        const query = debouncedQuery.trim();
+        const normalizedCodeQuery = query.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const looksLikeAirportCode = /^[A-Z0-9]{3,4}$/.test(normalizedCodeQuery);
 
-        if (nominatimRes.ok) {
-          const nominatimData = (await safeParseJson<SearchResult[]>(nominatimRes)) ?? [];
-          if (nominatimData.length > 0) {
-            setSearchResults(nominatimData);
-            return;
+        const proxyData = await fetchJsonWithTimeout<SearchResult[]>(
+          `/api/nominatim/search?q=${encodeURIComponent(query)}&limit=8`,
+        );
+        if (proxyData && proxyData.length > 0) {
+          if (!cancelled) setSearchResults(prioritizeSearchResults(dedupeByPlaceId(proxyData), query));
+          return;
+        }
+
+        // Cloudflare egress can be blocked by Nominatim. Try browser-direct as fallback.
+        const directParams = new URLSearchParams({
+          q: query,
+          format: "json",
+          addressdetails: "1",
+          extratags: "1",
+          limit: "8",
+          countrycodes: "us",
+        });
+        const directNominatim = await fetchJsonWithTimeout<SearchResult[]>(
+          `https://nominatim.openstreetmap.org/search?${directParams.toString()}`,
+        );
+        if (directNominatim && directNominatim.length > 0) {
+          if (!cancelled) {
+            setSearchResults(
+              prioritizeSearchResults(dedupeByPlaceId(directNominatim), query),
+            );
           }
+          return;
         }
 
         // Fallback: Open-Meteo geocoding (more tolerant, but no airport tags).
         const geoUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
-        geoUrl.searchParams.set("name", debouncedQuery);
+        geoUrl.searchParams.set("name", query);
         geoUrl.searchParams.set("count", "8");
         geoUrl.searchParams.set("language", "en");
         geoUrl.searchParams.set("format", "json");
 
-        const geoRes = await fetch(geoUrl.toString());
-        const geoJson = await safeParseJson<{ results?: OpenMeteoGeocodingResult[] }>(geoRes);
+        const geoJson = await fetchJsonWithTimeout<{ results?: OpenMeteoGeocodingResult[] }>(
+          geoUrl.toString(),
+        );
         const results = geoJson?.results ?? [];
 
         const mapped: SearchResult[] = results.map((r) => ({
@@ -133,18 +213,30 @@ export default function App() {
             state: r.admin1,
             country_code: r.country_code?.toLowerCase(),
           },
+          extratags: looksLikeAirportCode
+            ? (normalizedCodeQuery.length === 4
+              ? { icao: normalizedCodeQuery }
+              : { iata: normalizedCodeQuery })
+            : undefined,
         }));
 
-        setSearchResults(mapped);
+        if (!cancelled) {
+          setSearchResults(prioritizeSearchResults(dedupeByPlaceId(mapped), query));
+        }
 
       } catch (error) {
         console.error("Search failed:", error);
       } finally {
-        setIsSearching(false);
+        if (!cancelled) {
+          setIsSearching(false);
+        }
       }
     };
 
     searchLocations();
+    return () => {
+      cancelled = true;
+    };
   }, [debouncedQuery]);
 
   // Helper to create location object from search result
