@@ -24,6 +24,22 @@ interface WindVisualizationProps {
   location: Location;
 }
 
+interface TileBounds {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
+interface MapTile {
+  key: string;
+  url: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 const HORIZONS_MIN = [30, 60, 90, 180];
 const PROFILE_ALTITUDES = [1000, 2000, 3000, 5000, 8000, 10000, 14000, 18000];
 
@@ -78,6 +94,38 @@ function mercatorYNormalizedToLat(mercY: number): number {
   return (Math.atan(Math.sinh(n)) * 180) / Math.PI;
 }
 
+function lonToTileX(lon: number, zoom: number): number {
+  return ((lon + 180) / 360) * 2 ** zoom;
+}
+
+function latToTileY(lat: number, zoom: number): number {
+  return latToMercatorYNormalized(lat) * 2 ** zoom;
+}
+
+function tileXToLon(tileX: number, zoom: number): number {
+  return (tileX / 2 ** zoom) * 360 - 180;
+}
+
+function tileYToLat(tileY: number, zoom: number): number {
+  return mercatorYNormalizedToLat(tileY / 2 ** zoom);
+}
+
+function wrapTileX(tileX: number, zoom: number): number {
+  const tileCount = 2 ** zoom;
+  return ((tileX % tileCount) + tileCount) % tileCount;
+}
+
+function pickTileZoom(bounds: TileBounds): number {
+  const lonSpan = Math.max(0.01, Math.abs(bounds.east - bounds.west));
+  const mercNorth = latToMercatorYNormalized(bounds.north);
+  const mercSouth = latToMercatorYNormalized(bounds.south);
+  const mercSpan = Math.max(0.0001, Math.abs(mercSouth - mercNorth));
+  const targetPixels = 1200;
+  const zoomLon = Math.log2((targetPixels * 360) / (256 * lonSpan));
+  const zoomLat = Math.log2(targetPixels / (256 * mercSpan));
+  return Math.max(3, Math.min(14, Math.floor(Math.min(zoomLon, zoomLat))));
+}
+
 export function WindVisualization({ location }: WindVisualizationProps) {
   const [selectedAltitude, setSelectedAltitude] = useState(5000);
   const [selectedHour, setSelectedHour] = useState(0);
@@ -86,8 +134,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
   const [startLatInput, setStartLatInput] = useState(location.lat.toFixed(4));
   const [startLonInput, setStartLonInput] = useState(location.lon.toFixed(4));
   const [inputError, setInputError] = useState<string | null>(null);
-  const [mapLoadFailed, setMapLoadFailed] = useState(false);
-  const [mapLoadSucceeded, setMapLoadSucceeded] = useState(false);
+  const [tileLoadError, setTileLoadError] = useState(false);
 
   const plotRef = useRef<SVGSVGElement | null>(null);
   const { hours, loading, error } = useWindAloft(location.lat, location.lon);
@@ -188,20 +235,6 @@ export function WindVisualization({ location }: WindVisualizationProps) {
     return { north, south, east, west };
   }, [extentNm, location.lat, location.lon]);
 
-  const mapImageUrl = useMemo(() => {
-    const params = new URLSearchParams({
-      bbox: `${mapBounds.west},${mapBounds.south},${mapBounds.east},${mapBounds.north}`,
-      size: "1400x1400",
-      maptype: "mapnik",
-    });
-    return `https://staticmap.openstreetmap.de/staticmap.php?${params.toString()}`;
-  }, [mapBounds]);
-
-  useEffect(() => {
-    setMapLoadFailed(false);
-    setMapLoadSucceeded(false);
-  }, [mapImageUrl]);
-
   const speedBands: SpeedBands = trajectory?.speedBands ?? {
     minKt: 0,
     maxKt: 0,
@@ -247,6 +280,45 @@ export function WindVisualization({ location }: WindVisualizationProps) {
     const latLon = localNmToLatLon(eastNm, northNm, location.lat, location.lon);
     return getPlotPointFromLatLon(latLon.lat, latLon.lon);
   };
+
+  const mapTiles = useMemo(() => {
+    const zoom = pickTileZoom(mapBounds);
+    const minTileX = Math.floor(lonToTileX(mapBounds.west, zoom));
+    const maxTileX = Math.floor(lonToTileX(mapBounds.east, zoom));
+    const minTileY = Math.floor(latToTileY(mapBounds.north, zoom));
+    const maxTileY = Math.floor(latToTileY(mapBounds.south, zoom));
+    const maxY = Math.max(0, (2 ** zoom) - 1);
+    const tiles: MapTile[] = [];
+
+    for (let tileY = Math.max(0, minTileY); tileY <= Math.min(maxY, maxTileY); tileY++) {
+      for (let tileX = minTileX; tileX <= maxTileX; tileX++) {
+        const westLon = tileXToLon(tileX, zoom);
+        const eastLon = tileXToLon(tileX + 1, zoom);
+        const northLat = tileYToLat(tileY, zoom);
+        const southLat = tileYToLat(tileY + 1, zoom);
+        const topLeft = getPlotPointFromLatLon(northLat, westLon);
+        const bottomRight = getPlotPointFromLatLon(southLat, eastLon);
+        const width = bottomRight.x - topLeft.x;
+        const height = bottomRight.y - topLeft.y;
+        if (width <= 0 || height <= 0) continue;
+
+        tiles.push({
+          key: `${zoom}-${tileX}-${tileY}`,
+          url: `https://tile.openstreetmap.org/${zoom}/${wrapTileX(tileX, zoom)}/${tileY}.png`,
+          x: topLeft.x,
+          y: topLeft.y,
+          width,
+          height,
+        });
+      }
+    }
+
+    return tiles;
+  }, [mapBounds]);
+
+  useEffect(() => {
+    setTileLoadError(false);
+  }, [mapBounds]);
 
   const getPath = (horizonMin: number, band: TrajectoryBand, side: "left" | "center" | "right") => {
     return pathLookup.get(`${horizonMin}:${band}:${side}`);
@@ -433,7 +505,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                 Use Selected
               </Button>
             </div>
-            <p className="text-xs text-gray-500">Tip: tap inside the map below to place launch point.</p>
+            <p className="text-xs text-gray-500">Tip: tap anywhere on the map below to drop the launch pin.</p>
           </div>
         </div>
       </div>
@@ -460,31 +532,20 @@ export function WindVisualization({ location }: WindVisualizationProps) {
               preserveAspectRatio="none"
               onClick={handlePlotTap}
             >
-              {!mapLoadFailed && (
+              <rect x={0} y={0} width={100} height={100} fill="#e2e8f0" />
+              {mapTiles.map((tile) => (
                 <image
-                  href={mapImageUrl}
-                  x={0}
-                  y={0}
-                  width={100}
-                  height={100}
+                  key={tile.key}
+                  href={tile.url}
+                  x={tile.x}
+                  y={tile.y}
+                  width={tile.width}
+                  height={tile.height}
                   preserveAspectRatio="none"
-                  onLoad={() => setMapLoadSucceeded(true)}
-                  onError={() => {
-                    setMapLoadFailed(true);
-                    setMapLoadSucceeded(false);
-                  }}
+                  onError={() => setTileLoadError(true)}
                 />
-              )}
-              {mapLoadFailed && (
-                <rect x={0} y={0} width={100} height={100} fill="url(#fallbackBg)" />
-              )}
-              <defs>
-                <linearGradient id="fallbackBg" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#eff6ff" />
-                  <stop offset="100%" stopColor="#dbeafe" />
-                </linearGradient>
-              </defs>
-              <rect x={0} y={0} width={100} height={100} fill="rgba(15,23,42,0.08)" />
+              ))}
+              <rect x={0} y={0} width={100} height={100} fill="rgba(255,255,255,0.2)" />
 
               {gridTicks.map((tick, index) => {
                 const pointX = getPlotPoint(tick, 0).x;
@@ -608,15 +669,9 @@ export function WindVisualization({ location }: WindVisualizationProps) {
             </div>
           </div>
 
-          {!mapLoadFailed && !mapLoadSucceeded && (
-            <div className="absolute bottom-3 left-3 bg-white/90 rounded-md px-2 py-1 text-[11px] text-gray-600 shadow-sm">
-              Loading map tiles…
-            </div>
-          )}
-
-          {mapLoadFailed && (
+          {tileLoadError && (
             <div className="absolute bottom-3 left-3 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 text-[11px] text-amber-800 shadow-sm">
-              Map unavailable, showing trajectory fallback view.
+              Some map tiles failed to load. Trajectory data is still available.
             </div>
           )}
         </div>

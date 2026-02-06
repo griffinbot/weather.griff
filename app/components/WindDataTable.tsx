@@ -36,6 +36,99 @@ interface WindDataTableProps {
   location: Location;
 }
 
+const WIND_TABLE_SETTINGS_STORAGE_KEY = "weather.griff.windDataSettings.v1";
+
+type AltitudeFormat = "AGL" | "MSL" | "Pressure";
+type AltitudeNormalized = "normalized" | "raw";
+type AltitudeUnit = "ft" | "m";
+type SpeedUnit = "mph" | "kmh" | "knots" | "ms";
+type TempUnit = "F" | "C";
+type DistanceUnit = "miles" | "km";
+type TimeFormat = "12" | "24";
+
+type WindTableSettings = {
+  altitudeFormat: AltitudeFormat;
+  altitudeNormalized: AltitudeNormalized;
+  altitudeUnit: AltitudeUnit;
+  speedUnit: SpeedUnit;
+  tempUnit: TempUnit;
+  distanceUnit: DistanceUnit;
+  timeFormat: TimeFormat;
+};
+
+const DEFAULT_WIND_TABLE_SETTINGS: WindTableSettings = {
+  altitudeFormat: "AGL",
+  altitudeNormalized: "normalized",
+  altitudeUnit: "ft",
+  speedUnit: "mph",
+  tempUnit: "F",
+  distanceUnit: "miles",
+  timeFormat: "12",
+};
+
+function isAltitudeFormat(value: unknown): value is AltitudeFormat {
+  return value === "AGL" || value === "MSL" || value === "Pressure";
+}
+
+function isAltitudeNormalized(value: unknown): value is AltitudeNormalized {
+  return value === "normalized" || value === "raw";
+}
+
+function isAltitudeUnit(value: unknown): value is AltitudeUnit {
+  return value === "ft" || value === "m";
+}
+
+function isSpeedUnit(value: unknown): value is SpeedUnit {
+  return value === "mph" || value === "kmh" || value === "knots" || value === "ms";
+}
+
+function isTempUnit(value: unknown): value is TempUnit {
+  return value === "F" || value === "C";
+}
+
+function isDistanceUnit(value: unknown): value is DistanceUnit {
+  return value === "miles" || value === "km";
+}
+
+function isTimeFormat(value: unknown): value is TimeFormat {
+  return value === "12" || value === "24";
+}
+
+function readWindTableSettings(): WindTableSettings {
+  if (typeof window === "undefined") return DEFAULT_WIND_TABLE_SETTINGS;
+  const raw = window.localStorage.getItem(WIND_TABLE_SETTINGS_STORAGE_KEY);
+  if (!raw) return DEFAULT_WIND_TABLE_SETTINGS;
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<WindTableSettings>;
+    return {
+      altitudeFormat: isAltitudeFormat(parsed.altitudeFormat)
+        ? parsed.altitudeFormat
+        : DEFAULT_WIND_TABLE_SETTINGS.altitudeFormat,
+      altitudeNormalized: isAltitudeNormalized(parsed.altitudeNormalized)
+        ? parsed.altitudeNormalized
+        : DEFAULT_WIND_TABLE_SETTINGS.altitudeNormalized,
+      altitudeUnit: isAltitudeUnit(parsed.altitudeUnit)
+        ? parsed.altitudeUnit
+        : DEFAULT_WIND_TABLE_SETTINGS.altitudeUnit,
+      speedUnit: isSpeedUnit(parsed.speedUnit)
+        ? parsed.speedUnit
+        : DEFAULT_WIND_TABLE_SETTINGS.speedUnit,
+      tempUnit: isTempUnit(parsed.tempUnit)
+        ? parsed.tempUnit
+        : DEFAULT_WIND_TABLE_SETTINGS.tempUnit,
+      distanceUnit: isDistanceUnit(parsed.distanceUnit)
+        ? parsed.distanceUnit
+        : DEFAULT_WIND_TABLE_SETTINGS.distanceUnit,
+      timeFormat: isTimeFormat(parsed.timeFormat)
+        ? parsed.timeFormat
+        : DEFAULT_WIND_TABLE_SETTINGS.timeFormat,
+    };
+  } catch {
+    return DEFAULT_WIND_TABLE_SETTINGS;
+  }
+}
+
 // ─── Pill toggle button (reusable) ──────────────────────────────────
 function Pill({
   active,
@@ -71,26 +164,63 @@ export function WindDataTable({
   const { hours, elevation_m, loading, error, refetch } =
     useWindAloft(location.lat, location.lon);
 
-  // Settings state (unchanged from before)
-  const [altitudeFormat, setAltitudeFormat] = useState<
-    "AGL" | "MSL" | "Pressure"
-  >("AGL");
-  const [altitudeNormalized, setAltitudeNormalized] = useState<
-    "normalized" | "raw"
-  >("raw");
-  const [altitudeUnit, setAltitudeUnit] = useState<"ft" | "m">(
-    "ft",
+  const [altitudeFormat, setAltitudeFormat] = useState<AltitudeFormat>(
+    DEFAULT_WIND_TABLE_SETTINGS.altitudeFormat,
   );
-  const [speedUnit, setSpeedUnit] = useState<
-    "mph" | "kmh" | "knots" | "ms"
-  >("mph");
-  const [tempUnit, setTempUnit] = useState<"F" | "C">("F");
-  const [distanceUnit, setDistanceUnit] = useState<
-    "miles" | "km"
-  >("miles");
-  const [timeFormat, setTimeFormat] = useState<"12" | "24">(
-    "12",
+  const [altitudeNormalized, setAltitudeNormalized] = useState<AltitudeNormalized>(
+    DEFAULT_WIND_TABLE_SETTINGS.altitudeNormalized,
   );
+  const [altitudeUnit, setAltitudeUnit] = useState<AltitudeUnit>(
+    DEFAULT_WIND_TABLE_SETTINGS.altitudeUnit,
+  );
+  const [speedUnit, setSpeedUnit] = useState<SpeedUnit>(
+    DEFAULT_WIND_TABLE_SETTINGS.speedUnit,
+  );
+  const [tempUnit, setTempUnit] = useState<TempUnit>(
+    DEFAULT_WIND_TABLE_SETTINGS.tempUnit,
+  );
+  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>(
+    DEFAULT_WIND_TABLE_SETTINGS.distanceUnit,
+  );
+  const [timeFormat, setTimeFormat] = useState<TimeFormat>(
+    DEFAULT_WIND_TABLE_SETTINGS.timeFormat,
+  );
+
+  useEffect(() => {
+    const loaded = readWindTableSettings();
+    setAltitudeFormat(loaded.altitudeFormat);
+    setAltitudeNormalized(loaded.altitudeNormalized);
+    setAltitudeUnit(loaded.altitudeUnit);
+    setSpeedUnit(loaded.speedUnit);
+    setTempUnit(loaded.tempUnit);
+    setDistanceUnit(loaded.distanceUnit);
+    setTimeFormat(loaded.timeFormat);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const settingsToSave: WindTableSettings = {
+      altitudeFormat,
+      altitudeNormalized,
+      altitudeUnit,
+      speedUnit,
+      tempUnit,
+      distanceUnit,
+      timeFormat,
+    };
+    window.localStorage.setItem(
+      WIND_TABLE_SETTINGS_STORAGE_KEY,
+      JSON.stringify(settingsToSave),
+    );
+  }, [
+    altitudeFormat,
+    altitudeNormalized,
+    altitudeUnit,
+    speedUnit,
+    tempUnit,
+    distanceUnit,
+    timeFormat,
+  ]);
 
   const elevationFt = elevation_m * 3.28084;
 
