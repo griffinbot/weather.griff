@@ -22,6 +22,23 @@ interface CacheEntry {
 const responseCache = new Map<string, CacheEntry>();
 const pendingRequests = new Map<string, Promise<any>>();
 
+function parseRetryAfterMs(value: string | null, attempt: number): number {
+  if (!value) return Math.min(4000, 800 * (2 ** attempt));
+  const asSeconds = Number.parseInt(value, 10);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+    return Math.min(10_000, asSeconds * 1000);
+  }
+  const asDate = Date.parse(value);
+  if (Number.isFinite(asDate)) {
+    return Math.max(250, Math.min(10_000, asDate - Date.now()));
+  }
+  return Math.min(4000, 800 * (2 ** attempt));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function toProxyUrl(url: string): string {
   if (url.startsWith("https://api.open-meteo.com/v1/forecast?")) {
     return `/api/open-meteo/forecast?${url.split("?")[1] ?? ""}`;
@@ -80,7 +97,19 @@ export async function cachedFetch<T = any>(
   // 3. Make the request
   const promise = (async (): Promise<T> => {
     try {
-      const response = await fetch(proxyUrl, options);
+      let response: Response | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        response = await fetch(proxyUrl, options);
+        if ((response.status !== 429 && response.status !== 503) || attempt === 2) {
+          break;
+        }
+        await sleep(parseRetryAfterMs(response.headers.get("Retry-After"), attempt));
+      }
+
+      if (!response) {
+        throw new Error("No response from proxy");
+      }
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }

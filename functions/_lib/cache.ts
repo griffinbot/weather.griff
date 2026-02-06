@@ -59,11 +59,12 @@ export async function fetchJsonWithCache(options: CacheProxyOptions): Promise<Re
     throw error;
   }
 
-  if (upstream.status >= 500) {
+  if (upstream.status === 429 || upstream.status >= 500) {
     const staleHit = await cache.match(staleKey);
     if (staleHit) {
       const headers = new Headers(staleHit.headers);
       headers.set("X-Proxy-Cache", "STALE");
+      headers.set("X-Proxy-Upstream-Status", String(upstream.status));
       return new Response(staleHit.body, {
         status: staleHit.status,
         statusText: staleHit.statusText,

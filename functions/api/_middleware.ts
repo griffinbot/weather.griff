@@ -16,15 +16,27 @@ interface EventContext {
 
 const CLIENT_LIMITS = {
   "nominatim": { capacity: 30, refillPerSecond: 0.5 },
-  "open-meteo": { capacity: 60, refillPerSecond: 1 },
-  "weather-gov": { capacity: 60, refillPerSecond: 1 },
+  // Open-Meteo and weather.gov are used for core app data and can burst on
+  // initial dashboard load (multiple panels + saved locations).
+  "open-meteo": { capacity: 300, refillPerSecond: 20 },
+  "weather-gov": { capacity: 180, refillPerSecond: 8 },
 } as const;
 
 const PROVIDER_LIMITS = {
   "nominatim": { capacity: 120, refillPerSecond: 2 },
-  "open-meteo": { capacity: 600, refillPerSecond: 10 },
-  "weather-gov": { capacity: 600, refillPerSecond: 10 },
+  // Keep provider protection, but high enough to avoid false 429s.
+  "open-meteo": { capacity: 12000, refillPerSecond: 400 },
+  "weather-gov": { capacity: 3000, refillPerSecond: 100 },
 } as const;
+
+function getClientIp(request: Request): string {
+  const cfIp = request.headers.get("CF-Connecting-IP");
+  if (cfIp) return cfIp;
+  const forwarded = request.headers.get("X-Forwarded-For");
+  if (!forwarded) return "unknown";
+  const first = forwarded.split(",")[0]?.trim();
+  return first || "unknown";
+}
 
 function providerFromPath(pathname: string): keyof typeof CLIENT_LIMITS | null {
   if (pathname.startsWith("/api/nominatim/")) return "nominatim";
@@ -56,7 +68,7 @@ export async function onRequest(context: EventContext): Promise<Response> {
     return jsonError(404, "Unknown API route", request, env);
   }
 
-  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const ip = getClientIp(request);
   const ua = request.headers.get("User-Agent") || "unknown";
   const uaHash = coarseUaHash(ua);
 

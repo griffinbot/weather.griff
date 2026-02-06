@@ -87,9 +87,13 @@ function LocationCard({
         </span>
       </div>
 
-      {loading || !weather ? (
+      {loading ? (
         <div className="flex items-center justify-center py-3">
           <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+        </div>
+      ) : !weather ? (
+        <div className="flex items-center justify-center py-3">
+          <span className="text-[11px] text-gray-400">Weather unavailable</span>
         </div>
       ) : (
         <>
