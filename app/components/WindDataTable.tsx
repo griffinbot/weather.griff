@@ -110,6 +110,9 @@ export function WindDataTable({
   /** Build rows for a single hour based on current settings. */
   function buildRows(hour: WindAloftHour): DisplayRow[] {
     const rows: DisplayRow[] = [];
+    const rawAltitudeSet = new Set(
+      hour.levels.map((lv) => lv.altitudeAGL_ft),
+    );
 
     // Surface row
     rows.push({
@@ -143,7 +146,41 @@ export function WindDataTable({
         }
       }
     } else {
-      // Raw pressure-level data
+      // Raw pressure-level data + synthetic lower AGL rows when pressure
+      // levels start too high above the surface.
+      const lowestRawAGL = hour.levels.reduce(
+        (min, lv) => Math.min(min, lv.altitudeAGL_ft),
+        Infinity,
+      );
+
+      if (
+        altitudeFormat !== "Pressure" &&
+        Number.isFinite(lowestRawAGL) &&
+        lowestRawAGL > 100
+      ) {
+        const supplementalTargets = NORMALIZED_ALTITUDES_AGL.filter(
+          (targetAGL) =>
+            targetAGL < lowestRawAGL &&
+            !rawAltitudeSet.has(targetAGL),
+        );
+
+        for (const targetAGL of supplementalTargets) {
+          const interp = interpolateToAGL(hour.levels, targetAGL);
+          if (interp) {
+            rows.push({
+              label: String(targetAGL),
+              temperature: interp.temperature_F,
+              windSpeed: interp.windSpeed_mph,
+              windDirection: interp.windDirection,
+              altitudeAGL_ft: targetAGL,
+              altitudeMSL_ft: targetAGL + Math.round(elevationFt),
+              pressureLevel: interp.pressureLevel,
+            });
+          }
+        }
+      }
+
+      // Then include reported model pressure levels.
       for (const lv of hour.levels) {
         rows.push({
           label:
@@ -158,6 +195,8 @@ export function WindDataTable({
           pressureLevel: lv.pressureLevel,
         });
       }
+
+      rows.sort((a, b) => a.altitudeAGL_ft - b.altitudeAGL_ft);
     }
 
     return rows;
