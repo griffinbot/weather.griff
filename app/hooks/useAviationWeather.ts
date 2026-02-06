@@ -73,6 +73,30 @@ function toWeatherGovProxyUrl(pathOrUrl: string): string {
   return `/api/weather-gov/${pathOrUrl}`;
 }
 
+async function fetchRawMetarFromAviationWeather(stationId: string): Promise<string> {
+  try {
+    const response = await cachedFetch<any[] | Record<string, unknown>>(
+      `/api/aviationweather?type=metar&ids=${encodeURIComponent(stationId)}&format=json`,
+      undefined,
+      3 * 60_000,
+    );
+
+    const first = Array.isArray(response) ? response[0] : response;
+    if (!first || typeof first !== "object") return "";
+
+    const candidateFields = ["rawOb", "raw_text", "rawText", "raw"];
+    for (const field of candidateFields) {
+      const value = (first as Record<string, unknown>)[field];
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // useNearbyStations — fetches observation stations near a point
 // ---------------------------------------------------------------------------
@@ -149,9 +173,12 @@ export function useMetar(stationId: string | null) {
       const json = await weatherGovFetch<any>(url, 3 * 60_000); // cache 3 min
 
       const props = json.properties ?? {};
+      const weatherGovRaw = typeof props.rawMessage === "string" ? props.rawMessage.trim() : "";
+      const fallbackRaw = weatherGovRaw ? "" : await fetchRawMetarFromAviationWeather(stationId);
+      const rawMetar = weatherGovRaw || fallbackRaw;
 
       const metar: MetarData = {
-        raw: props.rawMessage ?? "",
+        raw: rawMetar,
         timestamp: props.timestamp ?? new Date().toISOString(),
         description: props.textDescription ?? "",
         temperature_C: props.temperature?.value ?? null,
