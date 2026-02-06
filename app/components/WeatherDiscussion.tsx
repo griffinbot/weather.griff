@@ -45,6 +45,13 @@ function resolveLatestProductRef(product: any): string | null {
   return null;
 }
 
+function officeMatchesProduct(product: any, officeCode: string): boolean {
+  const code = officeCode.toUpperCase();
+  const issuingOffice = String(product?.issuingOffice ?? product?.office ?? "").toUpperCase();
+  const wmo = String(product?.wmoCollectiveId ?? product?.productIdentifier ?? "").toUpperCase();
+  return issuingOffice.includes(`/${code}`) || issuingOffice.endsWith(code) || wmo.includes(code);
+}
+
 function parseDiscussionSection(text: string): string {
   const normalized = text.replace(/\r/g, "").trim();
   const afdIndex = normalized.search(/AREA FORECAST DISCUSSION|\.SYNOPSIS|\.(SHORT TERM|DISCUSSION)/i);
@@ -86,14 +93,21 @@ export function WeatherDiscussion({ location }: WeatherDiscussionProps) {
           throw new Error("Could not resolve NWS forecast office for this location.");
         }
 
-        const primaryListUrl = `/api/weather-gov/products/types/AFD/locations/${officeCode}`;
-        const primaryListJson = await weatherGovFetch<any>(primaryListUrl, 45_000);
-        let products: any[] = Array.isArray(primaryListJson?.["@graph"]) ? primaryListJson["@graph"] : [];
+        let products: any[] = [];
+
+        try {
+          const primaryListUrl = `/api/weather-gov/products/types/AFD/locations/${officeCode}`;
+          const primaryListJson = await weatherGovFetch<any>(primaryListUrl, 45_000);
+          products = Array.isArray(primaryListJson?.["@graph"]) ? primaryListJson["@graph"] : [];
+        } catch {
+          // Continue to fallback list below.
+        }
 
         if (products.length === 0) {
-          const fallbackListUrl = `/api/weather-gov/products?type=AFD&location=${officeCode}&limit=20`;
+          const fallbackListUrl = "/api/weather-gov/products/types/AFD";
           const fallbackListJson = await weatherGovFetch<any>(fallbackListUrl, 45_000);
-          products = Array.isArray(fallbackListJson?.["@graph"]) ? fallbackListJson["@graph"] : [];
+          const fallbackProducts: any[] = Array.isArray(fallbackListJson?.["@graph"]) ? fallbackListJson["@graph"] : [];
+          products = fallbackProducts.filter((item) => officeMatchesProduct(item, officeCode));
         }
 
         if (products.length === 0) {

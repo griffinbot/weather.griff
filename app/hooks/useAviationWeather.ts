@@ -73,6 +73,22 @@ function toWeatherGovProxyUrl(pathOrUrl: string): string {
   return `/api/weather-gov/${pathOrUrl}`;
 }
 
+function resolveProductUrl(product: any): string | null {
+  const atId = product?.["@id"];
+  if (typeof atId === "string" && atId.length > 0) {
+    return toWeatherGovProxyUrl(atId);
+  }
+
+  const id = product?.id;
+  if (typeof id === "string" && id.length > 0) {
+    return `/api/weather-gov/products/${id}`;
+  }
+  if (typeof id === "number") {
+    return `/api/weather-gov/products/${String(id)}`;
+  }
+  return null;
+}
+
 async function fetchRawMetarFromAviationWeather(stationId: string): Promise<string> {
   try {
     const response = await cachedFetch<any[] | Record<string, unknown>>(
@@ -92,6 +108,33 @@ async function fetchRawMetarFromAviationWeather(stationId: string): Promise<stri
       }
     }
     return "";
+  } catch {
+    return "";
+  }
+}
+
+async function fetchRawMetarFromWeatherGovProducts(stationId: string): Promise<string> {
+  try {
+    const locId = icaoToLocationId(stationId);
+    const listUrl = `/api/weather-gov/products/types/METAR/locations/${locId}`;
+    const listJson = await weatherGovFetch<any>(listUrl, 3 * 60_000);
+    const products: any[] = Array.isArray(listJson?.["@graph"]) ? listJson["@graph"] : [];
+    if (products.length === 0) return "";
+
+    const sortedProducts = [...products].sort((a, b) => {
+      const aTs = Date.parse(a?.issuanceTime ?? "");
+      const bTs = Date.parse(b?.issuanceTime ?? "");
+      const aValue = Number.isFinite(aTs) ? aTs : 0;
+      const bValue = Number.isFinite(bTs) ? bTs : 0;
+      return bValue - aValue;
+    });
+
+    const productUrl = resolveProductUrl(sortedProducts[0]);
+    if (!productUrl) return "";
+
+    const productJson = await weatherGovFetch<any>(productUrl, 3 * 60_000);
+    const rawText = typeof productJson?.productText === "string" ? productJson.productText.trim() : "";
+    return rawText;
   } catch {
     return "";
   }
@@ -213,8 +256,10 @@ export function useMetar(stationId: string | null) {
 
       const props = json.properties ?? {};
       const weatherGovRaw = typeof props.rawMessage === "string" ? props.rawMessage.trim() : "";
-      const fallbackRaw = weatherGovRaw ? "" : await fetchRawMetarFromAviationWeather(stationId);
-      const rawMetar = weatherGovRaw || fallbackRaw;
+      const aviationWeatherRaw = weatherGovRaw ? "" : await fetchRawMetarFromAviationWeather(stationId);
+      const weatherGovProductRaw =
+        weatherGovRaw || aviationWeatherRaw ? "" : await fetchRawMetarFromWeatherGovProducts(stationId);
+      const rawMetar = weatherGovRaw || aviationWeatherRaw || weatherGovProductRaw;
 
       const metar: MetarData = {
         raw: rawMetar,
