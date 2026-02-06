@@ -196,7 +196,7 @@ export async function weatherGovFetch<T = any>(
     url,
     {
       headers: {
-        Accept: "application/geo+json",
+        Accept: "application/geo+json, application/ld+json, application/json",
         // weather.gov requests a unique User-Agent; browsers restrict setting
         // this header directly, so we rely on the browser default UA plus the
         // Accept header. For server-side usage, set the User-Agent here.
