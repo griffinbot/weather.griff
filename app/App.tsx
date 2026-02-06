@@ -775,7 +775,7 @@ export default function App() {
         {/* Top Navigation - Tab Menu */}
         <div className="bg-white border-b border-gray-200 px-3 sm:px-6 pt-3 sm:pt-4 relative z-50">
           <div className="pb-3 sm:pb-4 space-y-2">
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-3">
               <div className="flex-shrink-0">
                 <img
                   src="/favicon.svg"
@@ -789,13 +789,13 @@ export default function App() {
                 />
               </div>
             {/* Search Bar - Outside overflow container so dropdown is not clipped */}
-              <div className="relative z-[100] flex-1 min-w-0 sm:flex-none sm:w-auto sm:flex-shrink-0">
+              <div className="relative z-[100] flex-1 min-w-0 lg:w-full lg:min-w-0">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
                 placeholder="Search airport or city"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9 sm:h-10 text-sm w-full sm:w-56 md:w-64 bg-gray-50 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 transition-all"
+                className="pl-9 h-9 sm:h-10 text-sm w-full sm:w-56 md:w-64 lg:w-full bg-gray-50 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 transition-all"
               />
               {isSearching && (
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -805,7 +805,7 @@ export default function App() {
               
               {/* Search Results Dropdown */}
               {(searchResults.length > 0 || (searchQuery.length >= 3 && !isSearching && searchResults.length === 0)) && (
-                <div className="absolute left-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[22rem] overflow-y-auto z-[200] w-[min(24rem,calc(100vw-1.5rem))] sm:w-96">
+                <div className="absolute left-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[22rem] overflow-y-auto z-[200] w-[min(24rem,calc(100vw-1.5rem))] sm:w-[min(24rem,calc(100vw-3rem))] lg:w-full lg:max-w-none">
                   {searchResults.length > 0 ? (
                     searchResults.map(result => {
                       const code = getAirportCode(result, searchQuery);
@@ -872,7 +872,7 @@ export default function App() {
               {/* AI Assistant Button */}
               <Button
                 variant="ghost"
-                className="h-9 sm:h-10 flex-shrink-0 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-xl px-2.5 sm:px-3 border border-gray-200 bg-white"
+                className="h-9 sm:h-10 flex-shrink-0 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-xl px-2.5 sm:px-3 border border-gray-200 bg-white lg:justify-self-end"
                 onClick={() => setIsAIPanelOpen(!isAIPanelOpen)}
               >
                 <MessageSquare className="w-4 h-4" />
@@ -881,37 +881,37 @@ export default function App() {
             </div>
 
             {/* Tab Navigation - single horizontal bar on mobile */}
-            <div className="min-w-0 w-full overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <TabsList className="bg-gray-100 p-1 rounded-xl mb-0 relative z-40 h-10 inline-flex w-max whitespace-nowrap gap-1">
-                <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
+            <div className="min-w-0 w-full overflow-x-auto lg:overflow-visible" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <TabsList className="bg-gray-100 p-1 rounded-xl mb-0 relative z-40 h-10 inline-flex w-max whitespace-nowrap gap-1 lg:grid lg:w-full lg:grid-cols-8 lg:whitespace-normal">
+                <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
                   <Wind className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
                   <span className="text-sm">Overview</span>
                 </TabsTrigger>
-                <TabsTrigger value="discussion" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
+                <TabsTrigger value="discussion" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
                   <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
                   <span className="text-sm">Discussion</span>
                 </TabsTrigger>
-                <TabsTrigger value="airports" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
+                <TabsTrigger value="airports" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
                   <Plane className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
                   <span className="text-sm">Airports</span>
                 </TabsTrigger>
-                <TabsTrigger value="outlook" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
+                <TabsTrigger value="outlook" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
                   <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
                   <span className="text-sm">7-Day</span>
                 </TabsTrigger>
-                <TabsTrigger value="wind-viz" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
+                <TabsTrigger value="wind-viz" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
                   <Wind className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
                   <span className="text-sm">Wind Viz</span>
                 </TabsTrigger>
-                <TabsTrigger value="metadata" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
+                <TabsTrigger value="metadata" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
                   <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
                   <span className="text-sm">Metadata</span>
                 </TabsTrigger>
-                <TabsTrigger value="flight" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
+                <TabsTrigger value="flight" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
                   <Plane className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
                   <span className="text-sm">Flight Plan</span>
                 </TabsTrigger>
-                <TabsTrigger value="settings" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0">
+                <TabsTrigger value="settings" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
                   <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </TabsTrigger>
               </TabsList>

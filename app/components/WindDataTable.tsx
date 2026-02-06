@@ -309,8 +309,8 @@ export function WindDataTable({
   // ── Scroll to current time on load ────────────────────────────────
 
   const getCardWidth = () => {
-    if (typeof window !== "undefined" && window.innerWidth < 640) return 208;
-    return 280;
+    if (typeof window !== "undefined" && window.innerWidth < 640) return 228;
+    return 276;
   };
 
   useEffect(() => {
@@ -634,7 +634,7 @@ export function WindDataTable({
             return (
               <div
                 key={hourIndex}
-                className={`flex-shrink-0 w-[200px] sm:w-[260px] rounded-2xl overflow-hidden transition-all ${
+                className={`flex-shrink-0 w-[220px] sm:w-[260px] rounded-2xl overflow-hidden transition-all ${
                   isNow
                     ? "bg-gradient-to-br from-blue-500 to-blue-600 ring-2 ring-blue-400 ring-offset-2"
                     : "bg-gradient-to-br from-blue-400 to-blue-500"
@@ -673,7 +673,7 @@ export function WindDataTable({
 
                 {/* Altitude data table */}
                 <div className="bg-blue-600/40 backdrop-blur-sm">
-                  <div className="grid grid-cols-[1.2fr_0.75fr_1fr_0.85fr] sm:grid-cols-[1fr_0.8fr_1fr_0.8fr] gap-2 sm:gap-3 px-3 py-2 text-white text-[11px] sm:text-xs font-semibold border-b border-white/20">
+                  <div className="grid grid-cols-[1.05fr_0.7fr_0.95fr_1fr] sm:grid-cols-[1fr_0.8fr_1fr_0.8fr] gap-1.5 sm:gap-3 px-3 py-2 text-white text-[10px] sm:text-xs font-semibold border-b border-white/20">
                     <div>ALT. ({altitudeFormat})</div>
                     <div>TEMP</div>
                     <div>DIRECTION</div>
@@ -684,7 +684,7 @@ export function WindDataTable({
                     {rows.map((row, ri) => (
                       <div
                         key={ri}
-                        className={`grid grid-cols-[1.2fr_0.75fr_1fr_0.85fr] sm:grid-cols-4 gap-2 px-3 py-1.5 text-[13px] sm:text-sm border-b border-white/10 hover:bg-white/10 transition-colors ${
+                        className={`grid grid-cols-[1.05fr_0.7fr_0.95fr_1fr] sm:grid-cols-4 gap-1.5 sm:gap-3 px-3 py-1.5 text-xs sm:text-sm border-b border-white/10 hover:bg-white/10 transition-colors ${
                           row.isSurface ? "bg-white/5" : ""
                         }`}
                       >
