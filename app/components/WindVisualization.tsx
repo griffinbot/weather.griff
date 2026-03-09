@@ -1,5 +1,5 @@
 import { Wind, ArrowUp, TrendingUp, Loader2, MapPin } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { Slider } from "./ui/slider";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
@@ -22,6 +22,15 @@ interface Location {
 
 interface WindVisualizationProps {
   location: Location;
+}
+
+interface WindVisualizationBoundaryProps {
+  children: ReactNode;
+  locationName: string;
+}
+
+interface WindVisualizationBoundaryState {
+  hasError: boolean;
 }
 
 interface TileBounds {
@@ -126,7 +135,43 @@ function pickTileZoom(bounds: TileBounds): number {
   return Math.max(3, Math.min(14, Math.floor(Math.min(zoomLon, zoomLat))));
 }
 
-export function WindVisualization({ location }: WindVisualizationProps) {
+class WindVisualizationBoundary extends Component<
+  WindVisualizationBoundaryProps,
+  WindVisualizationBoundaryState
+> {
+  state: WindVisualizationBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): WindVisualizationBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Wind visualization crashed", error, errorInfo);
+  }
+
+  componentDidUpdate(prevProps: WindVisualizationBoundaryProps) {
+    if (prevProps.locationName !== this.props.locationName && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 max-w-6xl mx-auto">
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-800">
+            Wind Visualization hit a rendering error. Switch locations or reload the page and try
+            again.
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function WindVisualizationPanel({ location }: WindVisualizationProps) {
   const [selectedAltitude, setSelectedAltitude] = useState(5000);
   const [selectedHour, setSelectedHour] = useState(0);
   const [startLat, setStartLat] = useState(location.lat);
@@ -542,16 +587,17 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                   width={tile.width}
                   height={tile.height}
                   preserveAspectRatio="none"
+                  pointerEvents="none"
                   onError={() => setTileLoadError(true)}
                 />
               ))}
-              <rect x={0} y={0} width={100} height={100} fill="rgba(255,255,255,0.2)" />
+              <rect x={0} y={0} width={100} height={100} fill="rgba(255,255,255,0.2)" pointerEvents="none" />
 
               {gridTicks.map((tick, index) => {
                 const pointX = getPlotPoint(tick, 0).x;
                 const pointY = getPlotPoint(0, tick).y;
                 return (
-                  <g key={`grid-${index}`}>
+                  <g key={`grid-${index}`} pointerEvents="none">
                     <line x1={pointX} y1={0} x2={pointX} y2={100} stroke="#cbd5e1" strokeWidth={0.2} opacity={0.45} />
                     <line x1={0} y1={pointY} x2={100} y2={pointY} stroke="#cbd5e1" strokeWidth={0.2} opacity={0.45} />
                   </g>
@@ -572,7 +618,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                 const arrowY2 = endY + Math.sin(angle2) * arrowLength;
                 const color = getSpeedColor(vector.speedKt);
                 return (
-                  <g key={`vec-${index}`} opacity={0.5}>
+                  <g key={`vec-${index}`} opacity={0.5} pointerEvents="none">
                     <line x1={vector.x} y1={vector.y} x2={endX} y2={endY} stroke={color} strokeWidth={0.5} strokeLinecap="round" />
                     <polygon points={`${endX},${endY} ${arrowX1},${arrowY1} ${arrowX2},${arrowY2}`} fill={color} />
                   </g>
@@ -602,6 +648,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                       points={[...leftPoints, ...rightPoints].join(" ")}
                       fill={bandFillColor(band)}
                       stroke="none"
+                      pointerEvents="none"
                     />
                   );
                 }),
@@ -624,18 +671,19 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                     stroke={horizonStroke(horizon)}
                     strokeWidth={0.8}
                     strokeLinecap="round"
+                    pointerEvents="none"
                   />
                 );
               })}
 
-              <circle cx={centerMarker.x} cy={centerMarker.y} r={1.1} fill="#0f172a" opacity={0.8} />
-              <circle cx={startMarker.x} cy={startMarker.y} r={1.2} fill="#16a34a" stroke="#ffffff" strokeWidth={0.3} />
+              <circle cx={centerMarker.x} cy={centerMarker.y} r={1.1} fill="#0f172a" opacity={0.8} pointerEvents="none" />
+              <circle cx={startMarker.x} cy={startMarker.y} r={1.2} fill="#16a34a" stroke="#ffffff" strokeWidth={0.3} pointerEvents="none" />
 
               {baselineEndpoints.map((endpoint) => {
                 const plot = getPlotPointFromLatLon(endpoint.lat, endpoint.lon);
                 const offset = labelOffsets[endpoint.horizonMin] ?? { dx: 1.5, dy: -1.5 };
                 return (
-                  <g key={`endpoint-${endpoint.horizonMin}`}>
+                  <g key={`endpoint-${endpoint.horizonMin}`} pointerEvents="none">
                     <circle cx={plot.x} cy={plot.y} r={1.05} fill={horizonStroke(endpoint.horizonMin)} stroke="#ffffff" strokeWidth={0.3} />
                     <text x={plot.x + offset.dx} y={plot.y + offset.dy} fontSize="2.7" fill="#1e293b" fontWeight={600}>
                       {endpoint.horizonMin}m
@@ -644,10 +692,10 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                 );
               })}
 
-              <text x={2} y={4} fontSize="2.4" fill="#475569">N</text>
-              <text x={96} y={52} fontSize="2.4" fill="#475569">E</text>
-              <text x={2} y={98} fontSize="2.4" fill="#475569">S</text>
-              <text x={2} y={52} fontSize="2.4" fill="#475569">W</text>
+              <text x={2} y={4} fontSize="2.4" fill="#475569" pointerEvents="none">N</text>
+              <text x={96} y={52} fontSize="2.4" fill="#475569" pointerEvents="none">E</text>
+              <text x={2} y={98} fontSize="2.4" fill="#475569" pointerEvents="none">S</text>
+              <text x={2} y={52} fontSize="2.4" fill="#475569" pointerEvents="none">W</text>
             </svg>
           )}
 
@@ -760,5 +808,13 @@ export function WindVisualization({ location }: WindVisualizationProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+export function WindVisualization(props: WindVisualizationProps) {
+  return (
+    <WindVisualizationBoundary locationName={props.location.name}>
+      <WindVisualizationPanel {...props} />
+    </WindVisualizationBoundary>
   );
 }
