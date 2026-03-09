@@ -2,8 +2,15 @@ import { useState, useEffect, useRef } from "react";
 import { Search, MapPin, Settings, Wind, FileText, Plane, BarChart3, Calendar, Loader2, Bookmark, BookmarkCheck, X, Trash2, ChevronLeft, ChevronRight, Menu, MessageSquare } from "lucide-react";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { Tabs, TabsContent } from "./components/ui/tabs";
 import { ScrollArea } from "./components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "./components/ui/sheet";
 import { CurrentWeather } from "./components/CurrentWeather";
 import { WindDataTable } from "./components/WindDataTable";
 import { WeatherDiscussion } from "./components/WeatherDiscussion";
@@ -384,8 +391,8 @@ export default function App() {
     initialLocationsState.selectedLocation,
   );
   const [activeTab, setActiveTab] = useState("overview");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   
   // Search state
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -884,14 +891,20 @@ export default function App() {
     };
   }, [activeTab]);
 
+  const handleSelectTabFromMenu = (tabValue: (typeof navTabs)[number]["value"]) => {
+    setActiveTab(tabValue);
+    setIsHeaderMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-[#f5f5f7] pb-8 sm:pb-[72px]">
       {/* Main Content Area with Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
         {/* Top Navigation - Tab Menu */}
         <div className="bg-white border-b border-gray-200 px-3 sm:px-6 pt-3 sm:pt-4 relative z-50">
-          <div className="pb-3 sm:pb-4 space-y-2">
-            <div className="flex items-center gap-2 sm:gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-3">
+          <div className="pb-3 sm:pb-4">
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="flex-shrink-0">
                 <img
                   src="/favicon.svg"
@@ -904,118 +917,133 @@ export default function App() {
                   className="hidden sm:block h-9 w-auto rounded-xl border border-gray-200 bg-white px-2 py-1"
                 />
               </div>
-            {/* Search Bar - Outside overflow container so dropdown is not clipped */}
-              <div className="relative z-[100] flex-1 min-w-0 lg:w-full lg:min-w-0">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                placeholder="Search airport or city"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9 sm:h-10 text-sm w-full sm:w-56 md:w-64 lg:w-full bg-gray-50 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 transition-all"
-              />
-              {isSearching && (
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                </div>
-              )}
-              
-              {/* Search Results Dropdown */}
-              {(searchResults.length > 0 || (searchQuery.length >= 3 && !isSearching && searchResults.length === 0)) && (
-                <div className="absolute left-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[22rem] overflow-y-auto z-[200] w-[min(24rem,calc(100vw-1.5rem))] sm:w-[min(24rem,calc(100vw-3rem))] lg:w-full lg:max-w-none">
-                  {searchResults.length > 0 ? (
-                    searchResults.map(result => {
-                      const code = getAirportCode(result, searchQuery);
-                      const isAirport = !!code;
-                      const isSaved = isLocationSaved(result);
-                      
-                      return (
-                        <div
-                          key={result.place_id}
-                          onClick={() => handleSelectLocation(result)}
-                          className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-start gap-3 text-sm border-b border-gray-100 last:border-0 transition-colors cursor-pointer group"
-                        >
-                          {isAirport ? (
-                            <Plane className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                          ) : (
-                            <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                          )}
-                          
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-900 truncate flex items-center gap-2">
-                              {code && code !== "ARPT" && (
-                                <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono tracking-wider">
-                                  {code}
-                                </span>
-                              )}
-                              <span className={isAirport ? "font-semibold" : ""}>
-                                {result.display_name.split(',')[0]}
-                              </span>
-                            </div>
-                            <div className="text-xs text-gray-500 truncate mt-1 leading-snug">
-                              {result.display_name.split(',').slice(1).join(',')}
-                            </div>
-                          </div>
-                          
-                          {/* Saved indicator or Save button */}
-                          <div className="flex-shrink-0">
-                            {isSaved ? (
-                              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 text-green-700">
-                                <BookmarkCheck className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-semibold">Saved</span>
-                              </div>
+              <div className="relative z-[100] min-w-0 flex-1 max-w-[520px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search airport or city"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-9 sm:h-10 text-sm w-full bg-gray-50 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 transition-all"
+                />
+                {isSearching && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                  </div>
+                )}
+
+                {(searchResults.length > 0 || (searchQuery.length >= 3 && !isSearching && searchResults.length === 0)) && (
+                  <div className="absolute left-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[22rem] overflow-y-auto z-[200] w-[min(24rem,calc(100vw-1.5rem))] sm:w-full">
+                    {searchResults.length > 0 ? (
+                      searchResults.map(result => {
+                        const code = getAirportCode(result, searchQuery);
+                        const isAirport = !!code;
+                        const isSaved = isLocationSaved(result);
+
+                        return (
+                          <div
+                            key={result.place_id}
+                            onClick={() => handleSelectLocation(result)}
+                            className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-start gap-3 text-sm border-b border-gray-100 last:border-0 transition-colors cursor-pointer group"
+                          >
+                            {isAirport ? (
+                              <Plane className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
                             ) : (
-                              <button
-                                onClick={(e) => handleSaveLocation(result, e)}
-                                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100"
-                              >
-                                <Bookmark className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-semibold">Save</span>
-                              </button>
+                              <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             )}
+
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-900 truncate flex items-center gap-2">
+                                {code && code !== "ARPT" && (
+                                  <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono tracking-wider">
+                                    {code}
+                                  </span>
+                                )}
+                                <span className={isAirport ? "font-semibold" : ""}>
+                                  {result.display_name.split(',')[0]}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-500 truncate mt-1 leading-snug">
+                                {result.display_name.split(',').slice(1).join(',')}
+                              </div>
+                            </div>
+
+                            <div className="flex-shrink-0">
+                              {isSaved ? (
+                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 text-green-700">
+                                  <BookmarkCheck className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] font-semibold">Saved</span>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={(e) => handleSaveLocation(result, e)}
+                                  className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                  <Bookmark className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] font-semibold">Save</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="p-4 text-center text-sm text-gray-500">
-                      No locations found
-                    </div>
-                  )}
-                </div>
-              )}
+                        );
+                      })
+                    ) : (
+                      <div className="p-4 text-center text-sm text-gray-500">
+                        No locations found
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* AI Assistant Button */}
               <Button
                 variant="ghost"
-                className="h-9 sm:h-10 flex-shrink-0 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-xl px-2.5 sm:px-3 border border-gray-200 bg-white lg:justify-self-end"
+                className="h-9 sm:h-10 flex-shrink-0 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-xl px-2.5 sm:px-3 border border-gray-200 bg-white"
                 onClick={() => setIsAIPanelOpen(!isAIPanelOpen)}
               >
                 <MessageSquare className="w-4 h-4" />
                 <span className="text-xs font-medium ml-1">Chat</span>
               </Button>
-            </div>
 
-            {/* Tab Navigation */}
-            <div className="min-w-0 w-full overflow-x-visible md:overflow-x-auto lg:overflow-visible" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <TabsList className="bg-gray-100 p-1 rounded-2xl mb-0 relative z-40 grid w-full grid-cols-4 gap-1 h-auto md:inline-flex md:w-max md:whitespace-nowrap md:rounded-xl md:h-10 lg:grid lg:w-full lg:grid-cols-8 lg:whitespace-normal">
-                {navTabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <TabsTrigger
-                      key={tab.value}
-                      value={tab.value}
-                      className="min-h-[3.35rem] flex-col gap-1 rounded-xl px-2 py-2 text-center data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 md:min-h-0 md:flex-none md:flex-row md:gap-1.5 md:px-3 md:py-2 lg:w-full lg:flex-1 lg:justify-center"
-                    >
-                      <Icon className="w-3.5 h-3.5 shrink-0 sm:w-4 sm:h-4" />
-                      <span className="text-[11px] font-medium leading-tight whitespace-normal sm:text-sm md:whitespace-nowrap">
-                        <span className="md:hidden">{tab.mobileLabel}</span>
-                        <span className="hidden md:inline">{tab.label}</span>
-                      </span>
-                    </TabsTrigger>
-                  );
-                })}
-              </TabsList>
+              <Sheet open={isHeaderMenuOpen} onOpenChange={setIsHeaderMenuOpen}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-9 sm:h-10 flex-shrink-0 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-xl px-2.5 sm:px-3 border border-gray-200 bg-white"
+                  onClick={() => setIsHeaderMenuOpen(true)}
+                >
+                  <Menu className="w-4 h-4" />
+                  <span className="sr-only">Open menu</span>
+                </Button>
+                <SheetContent side="right" className="w-[300px] sm:max-w-[340px]">
+                  <SheetHeader className="border-b border-gray-200">
+                    <SheetTitle>Menu</SheetTitle>
+                    <SheetDescription>
+                      Navigate between the main weather views.
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="p-4 space-y-2">
+                    {navTabs.map((tab) => {
+                      const Icon = tab.icon;
+                      const isActive = activeTab === tab.value;
+                      return (
+                        <button
+                          key={tab.value}
+                          type="button"
+                          onClick={() => handleSelectTabFromMenu(tab.value)}
+                          className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                            isActive
+                              ? "border-blue-500 bg-blue-50 text-blue-700"
+                              : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 shrink-0" />
+                          <span className="text-sm font-medium">{tab.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </SheetContent>
+              </Sheet>
             </div>
           </div>
         </div>

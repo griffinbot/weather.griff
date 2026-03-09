@@ -111,6 +111,8 @@ const FLOW_ROWS = 7;
 const NM_TO_METERS = 1852;
 const NM_TO_MI = 1.15078;
 const SETTINGS_STORAGE_KEY = "weather.griff.windVizSettings.v2";
+const STACK_ALTITUDE_MIN = PROFILE_ALTITUDES[0];
+const STACK_ALTITUDE_MAX = PROFILE_ALTITUDES[PROFILE_ALTITUDES.length - 1];
 
 const DEFAULT_SETTINGS: WindVizSettings = {
   basemap: "street",
@@ -371,6 +373,7 @@ function MapClickCapture({
 export function WindVisualization({ location }: WindVisualizationProps) {
   const [selectedAltitude, setSelectedAltitude] = useState(5000);
   const [selectedHour, setSelectedHour] = useState(0);
+  const [selectedStackHorizon, setSelectedStackHorizon] = useState(60);
   const [startLat, setStartLat] = useState(location.lat);
   const [startLon, setStartLon] = useState(location.lon);
   const [startLatInput, setStartLatInput] = useState(location.lat.toFixed(4));
@@ -756,6 +759,146 @@ export function WindVisualization({ location }: WindVisualizationProps) {
     );
   }, [pathLookup]);
 
+  const stackTrajectories = useMemo(() => {
+    if (!currentHour || hours.length === 0) {
+      return [] as Array<{
+        altitude: number;
+        positions: Array<{ eastNm: number; northNm: number }>;
+        endpoint: {
+          eastNm: number;
+          northNm: number;
+          distanceNm: number;
+          bearingDeg: number;
+          avgGroundspeedKt: number;
+          limitedByForecast?: boolean;
+        } | null;
+        speedKt: number;
+        direction: number;
+      }>;
+    }
+
+    return PROFILE_ALTITUDES.map((altitude) => {
+      const result = simulateBalloonTrajectory({
+        startLat,
+        startLon,
+        selectedAltitudeFtMsl: altitude,
+        startTime: currentHour.time,
+        horizonsMin: [selectedStackHorizon],
+        hours,
+        stepMinutes: 1,
+      });
+
+      const path = result.paths.find(
+        (candidate) =>
+          candidate.horizonMin === selectedStackHorizon &&
+          candidate.band === "baseline" &&
+          candidate.side === "center",
+      );
+      const endpoint = result.endpoints.find(
+        (candidate) =>
+          candidate.horizonMin === selectedStackHorizon &&
+          candidate.band === "baseline" &&
+          candidate.side === "center",
+      );
+      const profile = getProfileForAltitude(altitude);
+
+      return {
+        altitude,
+        positions:
+          path?.points.map((point) => ({
+            eastNm: point.eastNm,
+            northNm: point.northNm,
+          })) ?? [{ eastNm: 0, northNm: 0 }],
+        endpoint: endpoint
+          ? {
+              eastNm:
+                path?.points[path.points.length - 1]?.eastNm ?? 0,
+              northNm:
+                path?.points[path.points.length - 1]?.northNm ?? 0,
+              distanceNm: endpoint.distanceNm,
+              bearingDeg: endpoint.bearingDeg,
+              avgGroundspeedKt: endpoint.avgGroundspeedKt,
+              limitedByForecast: endpoint.limitedByForecast,
+            }
+          : null,
+        speedKt: profile.speedKt,
+        direction: profile.direction,
+      };
+    });
+  }, [
+    currentHour,
+    getProfileForAltitude,
+    hours,
+    selectedStackHorizon,
+    startLat,
+    startLon,
+  ]);
+
+  const bestStackLayer = stackTrajectories.reduce<
+    (typeof stackTrajectories)[number] | null
+  >((best, layer) => {
+    if (!layer.endpoint) return best;
+    if (!best?.endpoint) return layer;
+    return layer.endpoint.distanceNm > best.endpoint.distanceNm ? layer : best;
+  }, null);
+
+  const stackExtentNm = useMemo(() => {
+    const maxAbs = stackTrajectories.reduce((currentMax, layer) => {
+      const layerMax = layer.positions.reduce((layerCurrentMax, point) => {
+        return Math.max(
+          layerCurrentMax,
+          Math.abs(point.eastNm),
+          Math.abs(point.northNm),
+        );
+      }, 0);
+      return Math.max(currentMax, layerMax);
+    }, 0);
+
+    return Math.max(maxAbs, 6);
+  }, [stackTrajectories]);
+
+  const projectStackPoint = (
+    eastNm: number,
+    northNm: number,
+    altitudeFt: number,
+  ) => {
+    const scale = 24 / stackExtentNm;
+    const altitudeRatio =
+      (altitudeFt - STACK_ALTITUDE_MIN) /
+      (STACK_ALTITUDE_MAX - STACK_ALTITUDE_MIN || 1);
+    const x = 50 + eastNm * scale + northNm * scale * 0.34;
+    const y = 84 - altitudeRatio * 56 - northNm * scale * 0.26;
+    return { x, y };
+  };
+
+  const stackPlanes = PROFILE_ALTITUDES.map((altitude) => {
+    const leftNear = projectStackPoint(-stackExtentNm, -stackExtentNm * 0.18, altitude);
+    const rightNear = projectStackPoint(stackExtentNm, -stackExtentNm * 0.18, altitude);
+    return {
+      altitude,
+      leftNear,
+      rightNear,
+      labelPoint: projectStackPoint(-stackExtentNm * 1.02, 0, altitude),
+    };
+  });
+
+  const stackScene = stackTrajectories.map((layer) => {
+    const projectedPoints = layer.positions.map((point) =>
+      projectStackPoint(point.eastNm, point.northNm, layer.altitude),
+    );
+    const endpointProjection = layer.endpoint
+      ? projectStackPoint(layer.endpoint.eastNm, layer.endpoint.northNm, layer.altitude)
+      : projectStackPoint(0, 0, layer.altitude);
+
+    return {
+      ...layer,
+      color: getSpeedColor(layer.speedKt),
+      projectedPoints,
+      endpointProjection,
+      startProjection: projectStackPoint(0, 0, layer.altitude),
+    };
+  });
+
   const limitedByForecast = baselineEndpoints.some(
     (endpoint) => endpoint.limitedByForecast,
   );
@@ -922,7 +1065,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
     setMapFitNonce((value) => value + 1);
   };
 
-  const getProfileForAltitude = (altitudeMslFt: number) => {
+  function getProfileForAltitude(altitudeMslFt: number) {
     const nearest = nearestLevelByMsl(currentHour, altitudeMslFt);
     if (!nearest) {
       return { speedKt: 0, direction: 0 };
@@ -931,7 +1074,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
       speedKt: mphToKnots(nearest.windSpeed_mph),
       direction: nearest.windDirection,
     };
-  };
+  }
 
   const currentBasemap = BASEMAPS[settings.basemap];
 
@@ -1884,6 +2027,236 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                 Some horizons are limited by available forecast range.
               </div>
             )}
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  3D wind volume
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Compare where each altitude layer could carry you from the
+                  current launch point.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {HORIZONS_MIN.map((horizon) => (
+                  <SettingChip
+                    key={`stack-horizon-${horizon}`}
+                    active={selectedStackHorizon === horizon}
+                    onClick={() => setSelectedStackHorizon(horizon)}
+                  >
+                    {horizon} min
+                  </SettingChip>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.22),_transparent_34%),linear-gradient(160deg,_#08101b_0%,_#12263e_48%,_#1e293b_100%)] p-4 text-white">
+                <div className="mb-4 flex flex-wrap items-center gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-xs text-slate-100/90">
+                    Forecast frame{" "}
+                    <span className="font-semibold text-white">{timeLabel}</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-xs text-slate-100/90">
+                    Comparison horizon{" "}
+                    <span className="font-semibold text-white">
+                      {selectedStackHorizon} min
+                    </span>
+                  </div>
+                  {bestStackLayer?.endpoint && (
+                    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-50">
+                      Best reach{" "}
+                      <span className="font-semibold">
+                        {bestStackLayer.altitude.toLocaleString()} ft
+                      </span>{" "}
+                      to {formatDistance(bestStackLayer.endpoint.distanceNm)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-slate-950/35">
+                  <svg
+                    viewBox="0 0 100 100"
+                    className="h-[360px] w-full"
+                    preserveAspectRatio="none"
+                  >
+                    <defs>
+                      <linearGradient id="stackGround" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.18" />
+                        <stop offset="100%" stopColor="#0f172a" stopOpacity="0.04" />
+                      </linearGradient>
+                    </defs>
+
+                    <rect x="0" y="0" width="100" height="100" fill="transparent" />
+                    <polygon
+                      points="10,88 90,88 76,98 24,98"
+                      fill="url(#stackGround)"
+                      opacity="0.85"
+                    />
+
+                    {stackPlanes.map((plane) => (
+                      <g key={`stack-plane-${plane.altitude}`}>
+                        <line
+                          x1={plane.leftNear.x}
+                          y1={plane.leftNear.y}
+                          x2={plane.rightNear.x}
+                          y2={plane.rightNear.y}
+                          stroke="rgba(226,232,240,0.22)"
+                          strokeWidth="0.35"
+                          strokeDasharray="1 1.1"
+                        />
+                        <text
+                          x={plane.labelPoint.x}
+                          y={plane.labelPoint.y}
+                          fill="rgba(226,232,240,0.68)"
+                          fontSize="2.5"
+                          textAnchor="start"
+                        >
+                          {plane.altitude.toLocaleString()} ft
+                        </text>
+                      </g>
+                    ))}
+
+                    <line
+                      x1={projectStackPoint(0, 0, STACK_ALTITUDE_MIN).x}
+                      y1={projectStackPoint(0, 0, STACK_ALTITUDE_MIN).y}
+                      x2={projectStackPoint(0, 0, STACK_ALTITUDE_MAX).x}
+                      y2={projectStackPoint(0, 0, STACK_ALTITUDE_MAX).y}
+                      stroke="rgba(134,239,172,0.8)"
+                      strokeWidth="0.45"
+                    />
+
+                    {[...stackScene]
+                      .sort((left, right) => right.altitude - left.altitude)
+                      .map((layer) => {
+                        const pointString = layer.projectedPoints
+                          .map((point) => `${point.x},${point.y}`)
+                          .join(" ");
+                        const isSelected = layer.altitude === selectedAltitude;
+                        const endpoint = layer.endpoint;
+                        return (
+                          <g key={`stack-path-${layer.altitude}`}>
+                            <circle
+                              cx={layer.startProjection.x}
+                              cy={layer.startProjection.y}
+                              r={isSelected ? 0.85 : 0.55}
+                              fill="#f8fafc"
+                              opacity={isSelected ? 1 : 0.72}
+                            />
+                            <polyline
+                              points={pointString}
+                              fill="none"
+                              stroke={layer.color}
+                              strokeWidth={isSelected ? 1 : 0.62}
+                              opacity={isSelected ? 1 : 0.76}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <circle
+                              cx={layer.endpointProjection.x}
+                              cy={layer.endpointProjection.y}
+                              r={isSelected ? 1.15 : 0.82}
+                              fill={layer.color}
+                              stroke="#e2e8f0"
+                              strokeWidth="0.22"
+                            />
+                            {endpoint ? (
+                              <text
+                                x={layer.endpointProjection.x + 1.2}
+                                y={layer.endpointProjection.y - 0.6}
+                                fill={isSelected ? "#f8fafc" : "rgba(226,232,240,0.74)"}
+                                fontSize="2.2"
+                              >
+                                {layer.altitude.toLocaleString()} ft
+                              </text>
+                            ) : null}
+                          </g>
+                        );
+                      })}
+                  </svg>
+
+                  <div className="pointer-events-none absolute left-4 top-4 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-[11px] text-slate-100 backdrop-blur-sm">
+                    <div className="font-semibold uppercase tracking-[0.16em] text-slate-300">
+                      How to read
+                    </div>
+                    <div className="mt-1 max-w-[220px] text-slate-200/85">
+                      Each line is one altitude layer leaving the same launch
+                      point. Higher shelves represent higher altitudes.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {stackScene
+                  .filter((layer) => layer.endpoint)
+                  .sort(
+                    (left, right) =>
+                      (right.endpoint?.distanceNm ?? 0) -
+                      (left.endpoint?.distanceNm ?? 0),
+                  )
+                  .map((layer) => {
+                    const isSelected = layer.altitude === selectedAltitude;
+                    return (
+                      <button
+                        key={`stack-metric-${layer.altitude}`}
+                        type="button"
+                        onClick={() => setSelectedAltitude(layer.altitude)}
+                        className={`w-full rounded-3xl border p-4 text-left transition ${
+                          isSelected
+                            ? "border-sky-500 bg-sky-50 shadow-sm"
+                            : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">
+                              {layer.altitude.toLocaleString()} ft
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                              <ArrowUp
+                                className="h-3.5 w-3.5 text-sky-600"
+                                style={{ transform: `rotate(${layer.direction}deg)` }}
+                              />
+                              {layer.speedKt} kt from {getDirectionName(layer.direction)}
+                            </div>
+                          </div>
+                          <div
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: layer.color }}
+                          />
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                          <div className="rounded-2xl bg-white px-2 py-2">
+                            <div className="text-slate-400">Reach</div>
+                            <div className="mt-1 font-semibold text-slate-900">
+                              {layer.endpoint ? formatDistance(layer.endpoint.distanceNm) : "0 NM"}
+                            </div>
+                          </div>
+                          <div className="rounded-2xl bg-white px-2 py-2">
+                            <div className="text-slate-400">Bearing</div>
+                            <div className="mt-1 font-semibold text-slate-900">
+                              {layer.endpoint ? formatBearing(layer.endpoint.bearingDeg) : "0°"}
+                            </div>
+                          </div>
+                          <div className="rounded-2xl bg-white px-2 py-2">
+                            <div className="text-slate-400">Avg GS</div>
+                            <div className="mt-1 font-semibold text-slate-900">
+                              {layer.endpoint
+                                ? `${layer.endpoint.avgGroundspeedKt.toFixed(1)} kt`
+                                : "0 kt"}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
