@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, Loader2, MapPin, Search, Settings2, Sparkles, Wind } from "lucide-react";
+import { Clock3, Loader2, MapPin, Search, Settings2, Sparkles, Wind, Eye, Gauge, X } from "lucide-react";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { cn } from "./components/ui/utils";
@@ -16,9 +16,9 @@ import { cachedFetch } from "./services/weatherProxy";
 import type { SavedLocationRecord, SearchResultNormalized } from "../shared/contracts";
 
 const PRIMARY_TABS = [
-  { id: "briefing", label: "Briefing" },
+  { id: "briefing", label: "Flight Brief" },
   { id: "winds", label: "Winds" },
-  { id: "forecast", label: "Forecast" },
+  { id: "forecast", label: "Week Ahead" },
 ] as const;
 
 type PrimaryTab = (typeof PRIMARY_TABS)[number]["id"];
@@ -122,225 +122,253 @@ export default function App() {
 
   const current = briefing?.current;
 
+  const getFlightStatus = () => {
+    if (!current) return null;
+    const windSpeed = current.windSpeed ?? 0;
+    const gusts = current.windGusts ?? 0;
+    const visibility = current.visibility ?? 10;
+
+    if (gusts > 25 || windSpeed > 20 || visibility < 1) return { label: "NO-GO", color: "bg-red-500/15 text-red-400 border-red-500/20" };
+    if (gusts > 15 || windSpeed > 12 || visibility < 3) return { label: "CAUTION", color: "bg-amber-500/15 text-amber-400 border-amber-500/20" };
+    return { label: "FLYABLE", color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" };
+  };
+
+  const flightStatus = getFlightStatus();
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-4 pb-8 pt-6 sm:px-6 lg:px-8">
-        <header className="relative overflow-visible rounded-[30px] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 p-5 shadow-[0_26px_70px_rgba(15,23,42,0.45)] sm:p-6">
-          <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-orange-400/10 blur-3xl" />
+    <div className="min-h-screen bg-surface-ground text-slate-100">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-3 pb-6 pt-4 sm:px-5 lg:px-6">
 
-          <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="rounded-full border border-orange-300/20 bg-orange-400/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-orange-200">
-                  Griff Weather
-                </div>
-                <div className="rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs text-slate-300">
-                  Rebuilt UI • Aviation-first workflow
-                </div>
-              </div>
-
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  onFocus={() => setSearchOpen(searchResults.length > 0)}
-                  placeholder="Search airport or city"
-                  className="h-12 rounded-2xl border-white/10 bg-slate-800/80 pl-11 pr-11 text-base text-white placeholder:text-slate-400"
-                />
-                {searching && (
-                  <Loader2 className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-orange-300" />
-                )}
-
-                {searchOpen && (searchResults.length > 0 || searchQuery.trim().length >= 2) && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+0.75rem)] z-30 rounded-2xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl backdrop-blur-xl">
-                    {searchResults.length > 0 ? (
-                      searchResults.map((result) => (
-                        <button
-                          key={result.id}
-                          type="button"
-                          onClick={() => void addSearchResult(result)}
-                          className="flex w-full items-start justify-between rounded-xl px-4 py-3 text-left transition hover:bg-white/5"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-white">{result.name}</span>
-                              {result.airport && (
-                                <span className="rounded-full bg-orange-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-200">
-                                  {result.airport}
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-1 text-sm text-slate-400">{result.subtitle || "Airport search result"}</div>
-                          </div>
-                          <span className="text-xs font-medium text-slate-500">{result.source}</span>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-4 py-3 text-sm text-slate-400">No locations found.</div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {profile.savedLocations.map((location) => {
-                  const selected = selectedLocation?.id === location.id;
-                  return (
-                    <div key={location.id} className="group flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void selectLocation(location.id)}
-                        className={cn(
-                          "rounded-2xl border px-4 py-2.5 text-left transition",
-                          selected
-                            ? "border-orange-300/30 bg-orange-300/10 text-orange-50"
-                            : "border-white/15 bg-white/5 text-slate-200 hover:border-white/30",
-                        )}
-                      >
-                        <div className="text-xs font-bold tracking-wide">{location.airport}</div>
-                        <div className="text-xs text-slate-300">{location.name}</div>
-                      </button>
-                      {profile.savedLocations.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => void removeLocation(location.id)}
-                          className="rounded-full px-2 py-1 text-xs text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-white/5 hover:text-red-300"
-                          aria-label={`Remove ${location.name}`}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+        {/* ── Top Control Bar ────────────────────────────────── */}
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <div className="flex items-center gap-2.5 mr-auto">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+              <Wind className="h-4 w-4 text-white" />
             </div>
+            <span className="text-sm font-bold tracking-wide text-white">GRIFF WEATHER</span>
+          </div>
 
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Current Conditions</p>
-                  <h1 className="mt-2 text-2xl font-semibold text-white">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onFocus={() => setSearchOpen(searchResults.length > 0)}
+              placeholder="Search airport or city..."
+              className="h-9 rounded-lg border-white/8 bg-white/5 pl-9 pr-9 text-sm text-white placeholder:text-slate-500 focus:border-amber-500/30 focus:ring-amber-500/20"
+            />
+            {searching && (
+              <Loader2 className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-amber-400" />
+            )}
+
+            {searchOpen && (searchResults.length > 0 || searchQuery.trim().length >= 2) && (
+              <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 rounded-lg border border-white/10 bg-slate-900/98 p-1.5 shadow-2xl backdrop-blur-xl">
+                {searchResults.length > 0 ? (
+                  searchResults.map((result) => (
+                    <button
+                      key={result.id}
+                      type="button"
+                      onClick={() => void addSearchResult(result)}
+                      className="flex w-full items-start justify-between rounded-md px-3 py-2.5 text-left transition hover:bg-white/5"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-white">{result.name}</span>
+                          {result.airport && (
+                            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                              {result.airport}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500">{result.subtitle || "Airport search result"}</div>
+                      </div>
+                      <span className="text-[10px] font-medium text-slate-600">{result.source}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-2.5 text-sm text-slate-500">No locations found.</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <Button
+            size="sm"
+            className="h-9 rounded-lg bg-amber-500/15 px-3 text-amber-300 hover:bg-amber-500/25 border border-amber-500/20"
+            onClick={() => setAskOpen(true)}
+            disabled={!selectedLocation}
+          >
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+            Ask
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-lg border-white/10 bg-white/5 px-3 text-slate-300 hover:bg-white/10"
+            onClick={() => setProfileOpen(true)}
+          >
+            <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+            {sessionLoading ? "..." : session?.authenticated ? "Profile" : "Sign in"}
+          </Button>
+        </div>
+
+        {/* ── Saved Locations Rail ─────────────────────────── */}
+        {profile.savedLocations.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {profile.savedLocations.map((location) => {
+              const selected = selectedLocation?.id === location.id;
+              return (
+                <div key={location.id} className="group flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => void selectLocation(location.id)}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-left transition-all",
+                      selected
+                        ? "border-amber-400/30 bg-amber-400/10 text-amber-200"
+                        : "border-white/8 bg-white/3 text-slate-400 hover:border-white/15 hover:text-slate-200",
+                    )}
+                  >
+                    <span className="text-[11px] font-bold tracking-wider">{location.airport}</span>
+                    <span className="ml-2 text-[11px] text-slate-500">{location.name}</span>
+                  </button>
+                  {profile.savedLocations.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => void removeLocation(location.id)}
+                      className="ml-0.5 rounded p-1 text-slate-600 opacity-0 transition group-hover:opacity-100 hover:bg-white/5 hover:text-red-400"
+                      aria-label={`Remove ${location.name}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Hero Summary Panel ──────────────────────────── */}
+        <div className="mb-3 rounded-xl border border-white/8 bg-gradient-to-r from-slate-900/80 via-slate-900/60 to-indigo-950/40 p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-4">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
                     {selectedLocation?.name || "Select a location"}
                   </h1>
                   {selectedLocation && (
-                    <p className="mt-1 flex items-center gap-1 text-sm text-slate-300">
-                      <MapPin className="h-4 w-4" />
+                    <span className="rounded bg-white/10 px-2 py-0.5 text-[11px] font-bold tracking-wider text-slate-300">
                       {selectedLocation.airport}
-                    </p>
+                    </span>
+                  )}
+                  {flightStatus && (
+                    <span className={cn("rounded-md border px-2 py-0.5 text-[10px] font-bold tracking-wider", flightStatus.color)}>
+                      {flightStatus.label}
+                    </span>
                   )}
                 </div>
-                <div className="text-right">
-                  <div className="text-5xl font-light text-white">{current?.temperature ?? "--"}°</div>
-                  <div className="text-xs text-slate-400">Feels like {current?.feelsLike ?? "--"}°</div>
-                </div>
-              </div>
-
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-xs text-slate-400">Wind</p>
-                  <p className="mt-1 flex items-center gap-1 text-sm font-medium text-white">
-                    <Wind className="h-4 w-4 text-orange-200" />
-                    {current?.windSpeed ?? "--"} kt
+                {selectedLocation && (
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                    <MapPin className="h-3 w-3" />
+                    {selectedLocation.lat.toFixed(2)}°, {selectedLocation.lon.toFixed(2)}°
                   </p>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-xs text-slate-400">Visibility</p>
-                  <p className="mt-1 text-sm font-medium text-white">{current?.visibility ?? "--"} mi</p>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-xs text-slate-400">Humidity</p>
-                  <p className="mt-1 text-sm font-medium text-white">{current?.humidity ?? "--"}%</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 sm:gap-5">
+              {/* Temperature */}
+              <div className="text-center">
+                <div className="text-3xl font-light tracking-tight text-white sm:text-4xl">{current?.temperature ?? "--"}°</div>
+                <div className="text-[10px] text-slate-500">
+                  {current?.condition || "—"}{current?.feelsLike ? ` · Feels ${current.feelsLike}°` : ""}
                 </div>
               </div>
 
-              <div className="mt-5 flex flex-wrap gap-2">
-                <Button
-                  className="h-11 rounded-xl bg-white px-4 text-slate-900 hover:bg-slate-200"
-                  onClick={() => setAskOpen(true)}
-                  disabled={!selectedLocation}
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Ask Assistant
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-11 rounded-xl border-white/20 bg-transparent px-4 text-slate-100 hover:bg-white/10"
-                  onClick={() => setProfileOpen(true)}
-                >
-                  <Settings2 className="mr-2 h-4 w-4" />
-                  {sessionLoading ? "Account" : session?.authenticated ? "Profile" : "Sign in"}
-                </Button>
+              {/* Compact metrics strip */}
+              <div className="flex gap-3 rounded-lg bg-white/4 px-3 py-2 sm:gap-4 sm:px-4">
+                <div className="text-center">
+                  <Wind className="mx-auto h-3.5 w-3.5 text-amber-400" />
+                  <div className="mt-0.5 text-sm font-semibold text-white">{current?.windSpeed ?? "--"} <span className="text-[10px] font-normal text-slate-400">kt</span></div>
+                  <div className="text-[10px] text-slate-500">Wind</div>
+                </div>
+                <div className="w-px bg-white/8" />
+                <div className="text-center">
+                  <Eye className="mx-auto h-3.5 w-3.5 text-sky-400" />
+                  <div className="mt-0.5 text-sm font-semibold text-white">{current?.visibility ?? "--"} <span className="text-[10px] font-normal text-slate-400">mi</span></div>
+                  <div className="text-[10px] text-slate-500">Vis</div>
+                </div>
+                <div className="w-px bg-white/8" />
+                <div className="text-center">
+                  <Gauge className="mx-auto h-3.5 w-3.5 text-violet-400" />
+                  <div className="mt-0.5 text-sm font-semibold text-white">{current?.humidity ?? "--"}<span className="text-[10px] font-normal text-slate-400">%</span></div>
+                  <div className="text-[10px] text-slate-500">RH</div>
+                </div>
               </div>
-            </section>
+
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                <Clock3 className="h-3 w-3" />
+                {briefing?.lastUpdated
+                  ? new Date(briefing.lastUpdated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                  : "—"}
+              </div>
+            </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-            <nav className="grid w-full gap-2 sm:w-auto sm:grid-cols-3">
+          {/* Tab Navigation */}
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/6 pt-3">
+            <nav className="flex gap-1">
               {PRIMARY_TABS.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    "rounded-xl px-4 py-2.5 text-sm font-semibold transition",
+                    "rounded-lg px-3.5 py-1.5 text-xs font-semibold tracking-wide transition-all",
                     activeTab === tab.id
-                      ? "bg-orange-400 text-slate-950"
-                      : "bg-white/5 text-slate-300 hover:bg-white/10",
+                      ? "bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/25"
+                      : "text-slate-400 hover:bg-white/5 hover:text-slate-200",
                   )}
                 >
                   {tab.label}
                 </button>
               ))}
             </nav>
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Clock3 className="h-4 w-4" />
-              {briefing?.lastUpdated
-                ? `Updated ${new Date(briefing.lastUpdated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-                : "Awaiting location data"}
-            </div>
-          </div>
-        </header>
 
-        <main className="mt-5 flex-1">
+            {activeTab === "winds" && selectedLocation && (
+              <div className="ml-auto flex items-center gap-1 rounded-lg bg-white/5 p-0.5">
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-md px-3 py-1 text-xs font-medium transition-all",
+                    windsSubview === "table" ? "bg-white/15 text-white" : "text-slate-500 hover:text-slate-300",
+                  )}
+                  onClick={() => setWindsSubview("table")}
+                >
+                  Table
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "rounded-md px-3 py-1 text-xs font-medium transition-all",
+                    windsSubview === "visualization" ? "bg-white/15 text-white" : "text-slate-500 hover:text-slate-300",
+                  )}
+                  onClick={() => setWindsSubview("visualization")}
+                >
+                  Trajectory
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Main Content ────────────────────────────────── */}
+        <main className="flex-1">
           {activeTab === "briefing" && <BriefingView briefing={briefing} loading={briefingLoading} error={briefingError} />}
 
           {activeTab === "winds" && selectedLocation && (
-            <div className="space-y-5">
-              <section className="rounded-[28px] border border-white/10 bg-slate-900/80 p-6 shadow-sm">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <h2 className="text-2xl font-semibold tracking-tight text-white">Winds Aloft</h2>
-                    <p className="mt-2 text-sm leading-6 text-slate-300">
-                      Compare tabular reports with vector visualization for route planning.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-xl bg-white/5 p-1">
-                    <button
-                      type="button"
-                      className={cn(
-                        "rounded-lg px-4 py-2 text-sm font-medium transition",
-                        windsSubview === "table" ? "bg-white text-slate-900" : "text-slate-300",
-                      )}
-                      onClick={() => setWindsSubview("table")}
-                    >
-                      Table
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        "rounded-lg px-4 py-2 text-sm font-medium transition",
-                        windsSubview === "visualization" ? "bg-white text-slate-900" : "text-slate-300",
-                      )}
-                      onClick={() => setWindsSubview("visualization")}
-                    >
-                      Visualization
-                    </button>
-                  </div>
-                </div>
-              </section>
-
+            <div>
               {windsSubview === "table" ? (
                 <WindDataTable location={selectedLocation} />
               ) : (

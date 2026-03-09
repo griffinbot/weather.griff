@@ -24,6 +24,7 @@ import {
   DialogTrigger,
 } from "./ui/dialog";
 import { Label } from "./ui/label";
+import { cn } from "./ui/utils";
 
 interface Location {
   name: string;
@@ -130,8 +131,8 @@ function readWindTableSettings(): WindTableSettings {
   }
 }
 
-// ─── Pill toggle button (reusable) ──────────────────────────────────
-function Pill({
+// ─── Settings pill toggle ────────────────────────────────────────────
+function SettingsPill({
   active,
   onClick,
   children,
@@ -143,11 +144,12 @@ function Pill({
   return (
     <button
       onClick={onClick}
-      className={`px-6 py-2 rounded-full border-2 transition-all font-medium ${
+      className={cn(
+        "px-3.5 py-1.5 rounded-md text-xs font-medium transition-all border",
         active
-          ? "border-green-500 text-green-500 bg-green-50"
-          : "border-gray-300 text-gray-500 bg-white hover:border-gray-400"
-      }`}
+          ? "border-amber-500/30 bg-amber-500/15 text-amber-300"
+          : "border-white/8 bg-white/3 text-slate-400 hover:border-white/15 hover:text-slate-200",
+      )}
     >
       {children}
     </button>
@@ -161,7 +163,6 @@ export function WindDataTable({
 }: WindDataTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Wind aloft data from Open-Meteo
   const { hours, elevation_m, loading, error, refetch } =
     useWindAloft(location.lat, location.lon);
 
@@ -228,21 +229,19 @@ export function WindDataTable({
   // ── Derive display rows from raw API data ─────────────────────────
 
   type DisplayRow = {
-    label: string; // e.g. "Surface", "262", "1000"
-    temperature: number; // °F (raw)
-    windSpeed: number; // mph (raw)
-    windDirection: number; // degrees
+    label: string;
+    temperature: number;
+    windSpeed: number;
+    windDirection: number;
     altitudeAGL_ft: number;
     altitudeMSL_ft: number;
     pressureLevel: number;
     isSurface?: boolean;
   };
 
-  /** Build rows for a single hour based on current settings. */
   function buildRows(hour: WindAloftHour): DisplayRow[] {
     const rows: DisplayRow[] = [];
 
-    // Surface row
     rows.push({
       label: "Surface",
       temperature: hour.surfaceTemp_F,
@@ -258,7 +257,6 @@ export function WindDataTable({
       altitudeNormalized === "normalized" &&
       altitudeFormat !== "Pressure"
     ) {
-      // Interpolate to fixed AGL altitudes
       for (const targetAGL of NORMALIZED_ALTITUDES_AGL) {
         const interp = interpolateToAGL(hour.levels, targetAGL);
         if (interp) {
@@ -288,7 +286,6 @@ export function WindDataTable({
         }
       }
 
-      // Raw pressure-level data
       for (const lv of hour.levels) {
         rows.push({
           label:
@@ -327,7 +324,7 @@ export function WindDataTable({
   // ── Display helpers ───────────────────────────────────────────────
 
   const getDisplayAltitude = (row: DisplayRow): string => {
-    if (row.isSurface) return "Surface";
+    if (row.isSurface) return "SFC";
     if (altitudeFormat === "Pressure")
       return `${row.pressureLevel}`;
     const baseFt =
@@ -393,21 +390,21 @@ export function WindDataTable({
   };
 
   const getTempColor = (temp: number) => {
-    if (temp >= 60) return "text-green-400";
-    if (temp >= 50) return "text-green-500";
-    if (temp >= 40) return "text-yellow-400";
-    if (temp >= 30) return "text-blue-300";
-    if (temp >= 20) return "text-blue-400";
-    return "text-blue-500";
+    if (temp >= 60) return "text-emerald-400";
+    if (temp >= 50) return "text-emerald-500";
+    if (temp >= 40) return "text-amber-400";
+    if (temp >= 30) return "text-sky-300";
+    if (temp >= 20) return "text-sky-400";
+    return "text-blue-400";
   };
 
   const getSpeedColor = (speed: number) => {
-    if (speed >= 25) return "text-pink-200";
-    if (speed >= 20) return "text-yellow-200";
-    if (speed >= 15) return "text-yellow-300";
-    if (speed >= 10) return "text-green-200";
-    if (speed >= 5) return "text-green-300";
-    return "text-white";
+    if (speed >= 25) return "text-red-300";
+    if (speed >= 20) return "text-orange-300";
+    if (speed >= 15) return "text-amber-300";
+    if (speed >= 10) return "text-emerald-300";
+    if (speed >= 5) return "text-emerald-400";
+    return "text-slate-300";
   };
 
   const getHourlyWindSummary = (hour: WindAloftHour) => {
@@ -436,7 +433,6 @@ export function WindDataTable({
     };
   };
 
-  // Cloud height label helper
   const cloudLabel = (hour: WindAloftHour) => {
     const pct = hour.cloudCover;
     let cover = "CLR";
@@ -445,7 +441,6 @@ export function WindDataTable({
     else if (pct >= 50) cover = "SCT";
     else if (pct >= 25) cover = "FEW";
 
-    // Estimate ceiling from low/mid/high cloud layers
     let ceiling = "—";
     if (hour.cloudCoverHigh > 20) ceiling = "@20k+";
     if (hour.cloudCoverMid > 20) ceiling = "@10k";
@@ -455,7 +450,6 @@ export function WindDataTable({
     return `${cover}${ceiling}`;
   };
 
-  // Visibility in ground-friendly format
   const visLabel = (hour: WindAloftHour) => {
     const sm = hour.visibility_m / 1609.34;
     if (sm >= 10) return "10+SM";
@@ -463,7 +457,6 @@ export function WindDataTable({
     return `${sm.toFixed(1)}SM`;
   };
 
-  // Is it daytime?
   const isDaytime = (date: Date) => {
     const h = date.getHours();
     return h >= 6 && h < 20;
@@ -489,8 +482,8 @@ export function WindDataTable({
   // ── Scroll to current time on load ────────────────────────────────
 
   const getCardWidth = () => {
-    if (typeof window !== "undefined" && window.innerWidth < 640) return 228;
-    return 276;
+    if (typeof window !== "undefined" && window.innerWidth < 640) return 220;
+    return 268;
   };
 
   useEffect(() => {
@@ -524,25 +517,21 @@ export function WindDataTable({
 
   if (loading && hours.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 flex items-center justify-center gap-3">
-        <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
-        <span className="text-gray-500">
-          Loading wind aloft data from Open-Meteo…
-        </span>
+      <div className="rounded-xl border border-white/8 bg-surface-elevated p-8 flex items-center justify-center gap-3">
+        <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+        <span className="text-sm text-slate-400">Loading wind aloft data...</span>
       </div>
     );
   }
 
   if (error && hours.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-8 text-center">
-        <p className="text-red-500 mb-2">
-          Failed to load wind aloft data
-        </p>
-        <p className="text-sm text-gray-500 mb-4">{error}</p>
+      <div className="rounded-xl border border-red-500/15 bg-surface-elevated p-8 text-center">
+        <p className="text-sm text-red-400 mb-2">Failed to load wind aloft data</p>
+        <p className="text-xs text-slate-500 mb-4">{error}</p>
         <button
           onClick={refetch}
-          className="px-4 py-2 bg-blue-500 text-white rounded-xl text-sm hover:bg-blue-600 transition-colors"
+          className="px-4 py-1.5 bg-amber-500/15 text-amber-300 rounded-lg text-xs font-medium hover:bg-amber-500/25 transition border border-amber-500/20"
         >
           Retry
         </button>
@@ -553,224 +542,98 @@ export function WindDataTable({
   // ── Render ────────────────────────────────────────────────────────
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-      <div className="p-4 sm:p-6 pb-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="rounded-xl border border-white/8 bg-surface-elevated">
+      <div className="p-3 sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-lg mb-1">
-                Wind Aloft Data
-              </h3>
-              <span className="text-[10px] bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full">
+              <h3 className="text-sm font-semibold text-white">Wind Aloft Data</h3>
+              <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-emerald-400 border border-emerald-500/20">
                 LIVE
               </span>
             </div>
-            <p className="text-sm text-gray-500">
-              Upper Level Winds {location.airport} · Elev{" "}
-              {Math.round(elevationFt).toLocaleString()} ft MSL
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              {location.airport} · Elev {Math.round(elevationFt).toLocaleString()} ft MSL
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {/* ── Settings dialog ───────────────── */}
+          <div className="flex flex-wrap items-center gap-1.5">
             <Dialog>
               <DialogTrigger asChild>
-                <button className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors shadow-sm">
-                  <Settings className="w-4 h-4" />
-                  <span className="font-medium text-sm">
-                    Settings
-                  </span>
+                <button className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 hover:bg-white/8 text-slate-400 rounded-lg transition border border-white/8">
+                  <Settings className="w-3.5 h-3.5" />
+                  <span className="text-xs">Settings</span>
                 </button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-white">
+              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-surface-elevated border-white/10">
                 <DialogHeader>
-                  <DialogTitle>
-                    Wind Data Display Settings
-                  </DialogTitle>
-                  <DialogDescription>
-                    Customize how wind aloft data is displayed
-                    and formatted
+                  <DialogTitle className="text-white">Wind Data Display Settings</DialogTitle>
+                  <DialogDescription className="text-slate-400">
+                    Customize how wind aloft data is displayed and formatted
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-6 py-4">
-                  {/* Altitude Format */}
-                  <div className="space-y-3">
-                    <Label className="text-base font-semibold">
-                      Altitude format
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Pill
-                        active={altitudeFormat === "AGL"}
-                        onClick={() => setAltitudeFormat("AGL")}
-                      >
-                        AGL
-                      </Pill>
-                      <Pill
-                        active={altitudeFormat === "MSL"}
-                        onClick={() => setAltitudeFormat("MSL")}
-                      >
-                        MSL
-                      </Pill>
-                      <Pill
-                        active={altitudeFormat === "Pressure"}
-                        onClick={() =>
-                          setAltitudeFormat("Pressure")
-                        }
-                      >
-                        Pressure
-                      </Pill>
+                <div className="space-y-5 py-3">
+                  <div className="space-y-2.5">
+                    <Label className="text-sm font-semibold text-slate-300">Altitude format</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <SettingsPill active={altitudeFormat === "AGL"} onClick={() => setAltitudeFormat("AGL")}>AGL</SettingsPill>
+                      <SettingsPill active={altitudeFormat === "MSL"} onClick={() => setAltitudeFormat("MSL")}>MSL</SettingsPill>
+                      <SettingsPill active={altitudeFormat === "Pressure"} onClick={() => setAltitudeFormat("Pressure")}>Pressure</SettingsPill>
                     </div>
                   </div>
 
-                  {/* Altitude Levels */}
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     <div>
-                      <Label className="text-base font-semibold">
-                        Altitude levels
-                      </Label>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Altitudes are derived from pressure
-                        altitude, which varies by hour. Select
-                        "normalized" to interpolate data at
-                        fixed altitudes.
+                      <Label className="text-sm font-semibold text-slate-300">Altitude levels</Label>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Select "normalized" to interpolate data at fixed altitudes.
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Pill
-                        active={
-                          altitudeNormalized === "normalized"
-                        }
-                        onClick={() =>
-                          setAltitudeNormalized("normalized")
-                        }
-                      >
-                        Normalized
-                      </Pill>
-                      <Pill
-                        active={altitudeNormalized === "raw"}
-                        onClick={() =>
-                          setAltitudeNormalized("raw")
-                        }
-                      >
-                        Raw
-                      </Pill>
+                    <div className="flex flex-wrap gap-1.5">
+                      <SettingsPill active={altitudeNormalized === "normalized"} onClick={() => setAltitudeNormalized("normalized")}>Normalized</SettingsPill>
+                      <SettingsPill active={altitudeNormalized === "raw"} onClick={() => setAltitudeNormalized("raw")}>Raw</SettingsPill>
                     </div>
                   </div>
 
-                  {/* Altitude Unit */}
-                  <div className="space-y-3">
-                    <Label className="text-base font-semibold">
-                      Altitude unit
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Pill
-                        active={altitudeUnit === "ft"}
-                        onClick={() => setAltitudeUnit("ft")}
-                      >
-                        ft
-                      </Pill>
-                      <Pill
-                        active={altitudeUnit === "m"}
-                        onClick={() => setAltitudeUnit("m")}
-                      >
-                        m
-                      </Pill>
+                  <div className="space-y-2.5">
+                    <Label className="text-sm font-semibold text-slate-300">Altitude unit</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <SettingsPill active={altitudeUnit === "ft"} onClick={() => setAltitudeUnit("ft")}>ft</SettingsPill>
+                      <SettingsPill active={altitudeUnit === "m"} onClick={() => setAltitudeUnit("m")}>m</SettingsPill>
                     </div>
                   </div>
 
-                  {/* Speed */}
-                  <div className="space-y-3">
-                    <Label className="text-base font-semibold">
-                      Speed
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Pill
-                        active={speedUnit === "mph"}
-                        onClick={() => setSpeedUnit("mph")}
-                      >
-                        mph
-                      </Pill>
-                      <Pill
-                        active={speedUnit === "kmh"}
-                        onClick={() => setSpeedUnit("kmh")}
-                      >
-                        km/h
-                      </Pill>
-                      <Pill
-                        active={speedUnit === "knots"}
-                        onClick={() => setSpeedUnit("knots")}
-                      >
-                        knots
-                      </Pill>
-                      <Pill
-                        active={speedUnit === "ms"}
-                        onClick={() => setSpeedUnit("ms")}
-                      >
-                        m/s
-                      </Pill>
+                  <div className="space-y-2.5">
+                    <Label className="text-sm font-semibold text-slate-300">Speed</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <SettingsPill active={speedUnit === "mph"} onClick={() => setSpeedUnit("mph")}>mph</SettingsPill>
+                      <SettingsPill active={speedUnit === "kmh"} onClick={() => setSpeedUnit("kmh")}>km/h</SettingsPill>
+                      <SettingsPill active={speedUnit === "knots"} onClick={() => setSpeedUnit("knots")}>knots</SettingsPill>
+                      <SettingsPill active={speedUnit === "ms"} onClick={() => setSpeedUnit("ms")}>m/s</SettingsPill>
                     </div>
                   </div>
 
-                  {/* Temperature */}
-                  <div className="space-y-3">
-                    <Label className="text-base font-semibold">
-                      Temperature
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Pill
-                        active={tempUnit === "F"}
-                        onClick={() => setTempUnit("F")}
-                      >
-                        °F
-                      </Pill>
-                      <Pill
-                        active={tempUnit === "C"}
-                        onClick={() => setTempUnit("C")}
-                      >
-                        °C
-                      </Pill>
+                  <div className="space-y-2.5">
+                    <Label className="text-sm font-semibold text-slate-300">Temperature</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <SettingsPill active={tempUnit === "F"} onClick={() => setTempUnit("F")}>°F</SettingsPill>
+                      <SettingsPill active={tempUnit === "C"} onClick={() => setTempUnit("C")}>°C</SettingsPill>
                     </div>
                   </div>
 
-                  {/* Distance */}
-                  <div className="space-y-3">
-                    <Label className="text-base font-semibold">
-                      Distance
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Pill
-                        active={distanceUnit === "miles"}
-                        onClick={() => setDistanceUnit("miles")}
-                      >
-                        miles
-                      </Pill>
-                      <Pill
-                        active={distanceUnit === "km"}
-                        onClick={() => setDistanceUnit("km")}
-                      >
-                        km
-                      </Pill>
+                  <div className="space-y-2.5">
+                    <Label className="text-sm font-semibold text-slate-300">Distance</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <SettingsPill active={distanceUnit === "miles"} onClick={() => setDistanceUnit("miles")}>miles</SettingsPill>
+                      <SettingsPill active={distanceUnit === "km"} onClick={() => setDistanceUnit("km")}>km</SettingsPill>
                     </div>
                   </div>
 
-                  {/* Time Format */}
-                  <div className="space-y-3">
-                    <Label className="text-base font-semibold">
-                      Time format
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Pill
-                        active={timeFormat === "12"}
-                        onClick={() => setTimeFormat("12")}
-                      >
-                        12-hour
-                      </Pill>
-                      <Pill
-                        active={timeFormat === "24"}
-                        onClick={() => setTimeFormat("24")}
-                      >
-                        24-hour
-                      </Pill>
+                  <div className="space-y-2.5">
+                    <Label className="text-sm font-semibold text-slate-300">Time format</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <SettingsPill active={timeFormat === "12"} onClick={() => setTimeFormat("12")}>12-hour</SettingsPill>
+                      <SettingsPill active={timeFormat === "24"} onClick={() => setTimeFormat("24")}>24-hour</SettingsPill>
                     </div>
                   </div>
                 </div>
@@ -779,31 +642,28 @@ export function WindDataTable({
 
             <button
               onClick={refetch}
-              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 hover:bg-white/8 text-slate-400 rounded-lg transition border border-white/8"
               title="Refresh data"
             >
-              <RefreshCw
-                className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
-              />
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             </button>
 
             <button
               onClick={scrollToCurrentTime}
-              className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 rounded-lg transition border border-amber-500/20"
             >
-              <Clock className="w-4 h-4" />
-              <span className="font-medium text-sm">Now</span>
+              <Clock className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Now</span>
             </button>
-            <Wind className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />
           </div>
         </div>
       </div>
 
       {/* ── Scrollable cards ─────────────────────────────────────── */}
-      <div className="border-t border-gray-100 px-4 sm:px-6 pb-4 sm:pb-6">
+      <div className="border-t border-white/6 px-3 sm:px-4 pb-3 sm:pb-4">
         <div
           ref={scrollRef}
-          className="flex gap-2 sm:gap-4 py-4 overflow-x-auto overscroll-x-contain"
+          className="flex gap-2 sm:gap-3 py-3 overflow-x-auto overscroll-x-contain"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {hours.map((hour, hourIndex) => {
@@ -815,105 +675,82 @@ export function WindDataTable({
             return (
               <div
                 key={hourIndex}
-                className={`flex-shrink-0 w-[220px] sm:w-[260px] rounded-2xl overflow-hidden transition-all ${
+                className={cn(
+                  "flex-shrink-0 w-[212px] sm:w-[252px] rounded-lg overflow-hidden transition-all",
                   isNow
-                    ? "bg-gradient-to-br from-blue-500 to-blue-600 ring-2 ring-blue-400 ring-offset-2"
-                    : "bg-gradient-to-br from-blue-400 to-blue-500"
-                }`}
+                    ? "bg-gradient-to-b from-slate-800 to-slate-900 ring-1 ring-amber-500/40"
+                    : "bg-gradient-to-b from-slate-800/60 to-slate-900/60 border border-white/6",
+                )}
               >
                 {/* Header */}
-                <div className="p-4 pb-3 text-white">
-                  <div className="text-2xl sm:text-3xl font-light mb-2">
-                    {formatTime(hour.time)}
+                <div className="p-3 pb-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="text-lg sm:text-xl font-light text-white">
+                      {formatTime(hour.time)}
+                    </div>
+                    {isNow && (
+                      <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-amber-300 border border-amber-500/25">
+                        NOW
+                      </span>
+                    )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm">
-                    <span className="font-semibold">
-                      CIN {hour.cin}
-                    </span>
-                    <span className="font-semibold">
-                      CAPE {hour.cape}
-                    </span>
-                    <span className="font-semibold">
-                      AVG {convertSpeed(windSummary.avgMph)} {getSpeedUnitLabel()}
-                    </span>
-                    <span className="font-semibold">
-                      GUST {convertSpeed(windSummary.gustMph)} {getSpeedUnitLabel()}
-                    </span>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-400">
+                    <span className="font-semibold">CIN {hour.cin}</span>
+                    <span className="font-semibold">CAPE {hour.cape}</span>
+                    <span className="font-semibold">AVG {convertSpeed(windSummary.avgMph)} {getSpeedUnitLabel()}</span>
+                    <span className="font-semibold text-orange-300">G{convertSpeed(windSummary.gustMph)}</span>
                   </div>
                 </div>
 
                 {/* Weather info bar */}
-                <div className="px-4 pb-3 text-white flex items-center gap-2">
+                <div className="px-3 pb-2 flex items-center gap-1.5 text-[10px] text-slate-400">
                   {daytime ? (
-                    <Sun className="w-4 h-4 text-yellow-300" />
+                    <Sun className="w-3 h-3 text-amber-300" />
                   ) : (
-                    <Moon className="w-4 h-4 text-blue-200" />
+                    <Moon className="w-3 h-3 text-indigo-300" />
                   )}
-                  <span className="text-xs bg-blue-700/60 px-1.5 py-0.5 rounded font-mono font-semibold">
-                    {location.airport}
-                  </span>
-                  <span className="text-sm font-medium">
-                    {hour.cloudCover}% {cloudLabel(hour)}{" "}
-                    {visLabel(hour)}
-                  </span>
+                  <span className="font-mono font-bold text-slate-500">{location.airport}</span>
+                  <span>{hour.cloudCover}% {cloudLabel(hour)} {visLabel(hour)}</span>
                 </div>
 
                 {/* Altitude data table */}
-                <div className="bg-blue-600/40 backdrop-blur-sm">
-                  <div className="grid grid-cols-[1.05fr_0.7fr_0.95fr_1fr] sm:grid-cols-[1fr_0.8fr_1fr_0.8fr] gap-1.5 sm:gap-3 px-3 py-2 text-white text-[10px] sm:text-xs font-semibold border-b border-white/20">
-                    <div>ALT. ({altitudeFormat})</div>
-                    <div>TEMP</div>
-                    <div>DIRECTION</div>
-                    <div>SPEED</div>
+                <div className="bg-white/[0.02]">
+                  <div className="grid grid-cols-[1.05fr_0.7fr_0.95fr_1fr] gap-1 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-600 border-b border-white/6">
+                    <div>ALT</div>
+                    <div>TMP</div>
+                    <div>DIR</div>
+                    <div>SPD</div>
                   </div>
 
                   <div>
                     {rows.map((row, ri) => (
                       <div
                         key={ri}
-                        className={`grid grid-cols-[1.05fr_0.7fr_0.95fr_1fr] sm:grid-cols-4 gap-1.5 sm:gap-3 px-3 py-1.5 text-xs sm:text-sm border-b border-white/10 hover:bg-white/10 transition-colors ${
-                          row.isSurface ? "bg-white/5" : ""
-                        }`}
+                        className={cn(
+                          "grid grid-cols-[1.05fr_0.7fr_0.95fr_1fr] gap-1 px-2.5 py-1 text-[11px] border-b border-white/4 hover:bg-white/[0.04] transition-colors",
+                          row.isSurface && "bg-white/[0.03]",
+                        )}
                       >
-                        {/* Altitude */}
-                        <div className="text-white font-medium whitespace-nowrap">
-                          {getDisplayAltitude(row)}{" "}
+                        <div className="text-slate-300 font-medium whitespace-nowrap">
+                          {getDisplayAltitude(row)}
                           {!row.isSurface && (
-                            <span className="inline-block ml-1 text-[10px] opacity-70">
-                              {getAltitudeUnitLabel()}
-                            </span>
+                            <span className="ml-0.5 text-[8px] text-slate-600">{getAltitudeUnitLabel()}</span>
                           )}
                         </div>
-
-                        {/* Temperature */}
-                        <div
-                          className={`font-semibold ${getTempColor(row.temperature)}`}
-                        >
+                        <div className={`font-semibold ${getTempColor(row.temperature)}`}>
                           {convertTemp(row.temperature)}°
-                          {tempUnit}
                         </div>
-
-                        {/* Direction */}
-                        <div className="text-white font-medium flex items-center whitespace-nowrap">
+                        <div className="text-slate-300 flex items-center whitespace-nowrap">
                           <ArrowUp
-                            className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0"
+                            className="w-3 h-3 shrink-0"
                             style={{
-                              transform: `rotate(${getWindDirectionRotation(
-                                row.windDirection,
-                              )}deg)`,
+                              transform: `rotate(${getWindDirectionRotation(row.windDirection)}deg)`,
                             }}
                           />
-                          <span className="ml-1 text-xs">
-                            {row.windDirection}°
-                          </span>
+                          <span className="ml-0.5 text-[10px]">{row.windDirection}°</span>
                         </div>
-
-                        {/* Speed */}
-                        <div
-                          className={`font-semibold whitespace-nowrap ${getSpeedColor(row.windSpeed)}`}
-                        >
-                          {convertSpeed(row.windSpeed)}{" "}
-                          {getSpeedUnitLabel()}
+                        <div className={`font-semibold whitespace-nowrap ${getSpeedColor(row.windSpeed)}`}>
+                          {convertSpeed(row.windSpeed)} <span className="text-[8px] font-normal text-slate-600">{getSpeedUnitLabel()}</span>
                         </div>
                       </div>
                     ))}

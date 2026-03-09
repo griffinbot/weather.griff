@@ -118,6 +118,25 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Aviation premium surface tokens */
+  --color-surface-ground: #0b1120;
+  --color-surface-elevated: #111827;
+  --color-surface-overlay: #1e293b;
+  --color-surface-card: rgba(255, 255, 255, 0.04);
+  --color-surface-card-hover: rgba(255, 255, 255, 0.07);
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-default: rgba(255, 255, 255, 0.10);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+  --color-accent-amber: #f59e0b;
+  --color-accent-amber-muted: rgba(245, 158, 11, 0.15);
+  --color-accent-amber-text: #fbbf24;
+  --color-status-go: #22c55e;
+  --color-status-caution: #f59e0b;
+  --color-status-nogo: #ef4444;
+  --color-status-go-bg: rgba(34, 197, 94, 0.12);
+  --color-status-caution-bg: rgba(245, 158, 11, 0.12);
+  --color-status-nogo-bg: rgba(239, 68, 68, 0.12);
 }
 
 @layer base {
@@ -131,11 +150,6 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-
-  /**
-  * Default typography styles for HTML elements (h1-h4, p, label, button, input).
-  * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
-  */
 
   html {
     font-size: var(--font-size);
@@ -181,5 +195,21 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+
+  /* Custom scrollbar for the dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
   }
 }

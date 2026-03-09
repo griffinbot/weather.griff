@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Slider } from "./ui/slider";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import { cn } from "./ui/utils";
 import { useWindAloft, type PressureLevelRow, type WindAloftHour } from "../hooks/useWindAloft";
 import {
   latLonToLocalNm,
@@ -417,27 +418,19 @@ export function WindVisualization({ location }: WindVisualizationProps) {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold mb-2">Wind Visualization</h2>
-            <p className="text-gray-600">Balloon drift planner for {location.name}</p>
+    <div className="space-y-3">
+      {/* ── Control Console ─────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+        {/* Altitude Control */}
+        <div className="rounded-xl border border-white/8 bg-surface-elevated p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="w-4 h-4 text-amber-400" />
+            <h3 className="text-xs font-semibold text-white uppercase tracking-wider">Altitude</h3>
           </div>
-          <Wind className="w-8 h-8 text-blue-500" />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="w-5 h-5 text-blue-500" />
-            <h3 className="font-semibold">Altitude</h3>
-          </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Fixed Balloon Altitude</span>
-              <span className="font-semibold text-lg text-blue-600">{selectedAltitude.toLocaleString()} ft MSL</span>
+              <span className="text-[11px] text-slate-500">Fixed Balloon Altitude</span>
+              <span className="font-semibold text-sm text-amber-300">{selectedAltitude.toLocaleString()} ft MSL</span>
             </div>
             <Slider
               value={[selectedAltitude]}
@@ -447,22 +440,23 @@ export function WindVisualization({ location }: WindVisualizationProps) {
               step={1000}
               className="w-full"
             />
-            <div className="flex justify-between text-xs text-gray-500">
+            <div className="flex justify-between text-[10px] text-slate-600">
               <span>1,000 ft</span>
               <span>18,000 ft</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-4">
-            <Wind className="w-5 h-5 text-blue-500" />
-            <h3 className="font-semibold">Forecast Time</h3>
+        {/* Forecast Time Control */}
+        <div className="rounded-xl border border-white/8 bg-surface-elevated p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Wind className="w-4 h-4 text-sky-400" />
+            <h3 className="text-xs font-semibold text-white uppercase tracking-wider">Forecast Time</h3>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Start Time</span>
-              <span className="font-semibold text-lg text-blue-600">{timeDisplay}</span>
+              <span className="text-[11px] text-slate-500">Start Time</span>
+              <span className="font-semibold text-sm text-sky-300">{timeDisplay}</span>
             </div>
             <Slider
               value={[selectedHour]}
@@ -473,55 +467,76 @@ export function WindVisualization({ location }: WindVisualizationProps) {
               className="w-full"
               disabled={hourMax === 0}
             />
-            <div className="flex justify-between text-xs text-gray-500">
+            <div className="flex justify-between text-[10px] text-slate-600">
               <span>Earliest</span>
               <span>Latest</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-4">
-            <MapPin className="w-5 h-5 text-blue-500" />
-            <h3 className="font-semibold">Balloon Launch</h3>
+        {/* Launch Point Control */}
+        <div className="rounded-xl border border-white/8 bg-surface-elevated p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <MapPin className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-xs font-semibold text-white uppercase tracking-wider">Launch Point</h3>
           </div>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-1.5">
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Latitude</label>
-                <Input value={startLatInput} onChange={(e) => setStartLatInput(e.target.value)} />
+                <label className="text-[10px] text-slate-500 mb-0.5 block">Lat</label>
+                <Input
+                  value={startLatInput}
+                  onChange={(e) => setStartLatInput(e.target.value)}
+                  className="h-8 text-xs bg-white/5 border-white/8 text-white"
+                />
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Longitude</label>
-                <Input value={startLonInput} onChange={(e) => setStartLonInput(e.target.value)} />
+                <label className="text-[10px] text-slate-500 mb-0.5 block">Lon</label>
+                <Input
+                  value={startLonInput}
+                  onChange={(e) => setStartLonInput(e.target.value)}
+                  className="h-8 text-xs bg-white/5 border-white/8 text-white"
+                />
               </div>
             </div>
-            {inputError && <p className="text-xs text-red-600">{inputError}</p>}
-            <div className="flex gap-2">
-              <Button onClick={handleSetStartFromInputs} className="flex-1">
-                Set Launch Point
+            {inputError && <p className="text-[10px] text-red-400">{inputError}</p>}
+            <div className="flex gap-1.5">
+              <Button
+                onClick={handleSetStartFromInputs}
+                className="flex-1 h-7 text-xs bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/20"
+              >
+                Set Point
               </Button>
-              <Button variant="outline" onClick={handleUseSelectedLocation}>
-                Use Selected
+              <Button
+                variant="outline"
+                onClick={handleUseSelectedLocation}
+                className="h-7 text-xs border-white/10 text-slate-400 hover:bg-white/5"
+              >
+                Reset
               </Button>
             </div>
-            <p className="text-xs text-gray-500">Tip: tap anywhere on the map below to drop the launch pin.</p>
+            <p className="text-[10px] text-slate-600">Tap the map to drop the launch pin</p>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <h3 className="font-semibold mb-1">Balloon Reachability at {selectedAltitude.toLocaleString()} ft MSL</h3>
-        <p className="text-sm text-gray-500 mb-4">Start time {timeDisplay}</p>
+      {/* ── Trajectory Map (Hero) ─────────────────────── */}
+      <div className="rounded-xl border border-white/8 bg-surface-elevated p-3 sm:p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Balloon Reachability</h3>
+            <p className="text-[11px] text-slate-500">{selectedAltitude.toLocaleString()} ft MSL · Start {timeDisplay}</p>
+          </div>
+        </div>
 
-        <div className="relative w-full aspect-square bg-slate-100 rounded-xl border border-blue-200 overflow-hidden">
+        <div className="relative w-full aspect-square rounded-lg border border-white/8 overflow-hidden bg-slate-900">
           {loading && hours.length === 0 ? (
-            <div className="absolute inset-0 flex items-center justify-center gap-2 text-gray-600">
-              <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-              <span className="text-sm">Loading trajectory data…</span>
+            <div className="absolute inset-0 flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-amber-400" />
+              <span className="text-sm text-slate-400">Loading trajectory data...</span>
             </div>
           ) : error && !trajectory ? (
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-red-600 px-6 text-center">
+            <div className="absolute inset-0 flex items-center justify-center text-sm text-red-400 px-6 text-center">
               {error}
             </div>
           ) : (
@@ -532,7 +547,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
               preserveAspectRatio="none"
               onClick={handlePlotTap}
             >
-              <rect x={0} y={0} width={100} height={100} fill="#e2e8f0" />
+              <rect x={0} y={0} width={100} height={100} fill="#0f172a" />
               {mapTiles.map((tile) => (
                 <image
                   key={tile.key}
@@ -545,15 +560,15 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                   onError={() => setTileLoadError(true)}
                 />
               ))}
-              <rect x={0} y={0} width={100} height={100} fill="rgba(255,255,255,0.2)" />
+              <rect x={0} y={0} width={100} height={100} fill="rgba(15,23,42,0.35)" />
 
               {gridTicks.map((tick, index) => {
                 const pointX = getPlotPoint(tick, 0).x;
                 const pointY = getPlotPoint(0, tick).y;
                 return (
                   <g key={`grid-${index}`}>
-                    <line x1={pointX} y1={0} x2={pointX} y2={100} stroke="#cbd5e1" strokeWidth={0.2} opacity={0.45} />
-                    <line x1={0} y1={pointY} x2={100} y2={pointY} stroke="#cbd5e1" strokeWidth={0.2} opacity={0.45} />
+                    <line x1={pointX} y1={0} x2={pointX} y2={100} stroke="#334155" strokeWidth={0.15} opacity={0.5} />
+                    <line x1={0} y1={pointY} x2={100} y2={pointY} stroke="#334155" strokeWidth={0.15} opacity={0.5} />
                   </g>
                 );
               })}
@@ -572,7 +587,7 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                 const arrowY2 = endY + Math.sin(angle2) * arrowLength;
                 const color = getSpeedColor(vector.speedKt);
                 return (
-                  <g key={`vec-${index}`} opacity={0.5}>
+                  <g key={`vec-${index}`} opacity={0.45}>
                     <line x1={vector.x} y1={vector.y} x2={endX} y2={endY} stroke={color} strokeWidth={0.5} strokeLinecap="round" />
                     <polygon points={`${endX},${endY} ${arrowX1},${arrowY1} ${arrowX2},${arrowY2}`} fill={color} />
                   </g>
@@ -628,8 +643,8 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                 );
               })}
 
-              <circle cx={centerMarker.x} cy={centerMarker.y} r={1.1} fill="#0f172a" opacity={0.8} />
-              <circle cx={startMarker.x} cy={startMarker.y} r={1.2} fill="#16a34a" stroke="#ffffff" strokeWidth={0.3} />
+              <circle cx={centerMarker.x} cy={centerMarker.y} r={1.1} fill="#f8fafc" opacity={0.7} />
+              <circle cx={startMarker.x} cy={startMarker.y} r={1.2} fill="#22c55e" stroke="#ffffff" strokeWidth={0.3} />
 
               {baselineEndpoints.map((endpoint) => {
                 const plot = getPlotPointFromLatLon(endpoint.lat, endpoint.lon);
@@ -637,85 +652,87 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                 return (
                   <g key={`endpoint-${endpoint.horizonMin}`}>
                     <circle cx={plot.x} cy={plot.y} r={1.05} fill={horizonStroke(endpoint.horizonMin)} stroke="#ffffff" strokeWidth={0.3} />
-                    <text x={plot.x + offset.dx} y={plot.y + offset.dy} fontSize="2.7" fill="#1e293b" fontWeight={600}>
+                    <text x={plot.x + offset.dx} y={plot.y + offset.dy} fontSize="2.7" fill="#94a3b8" fontWeight={600}>
                       {endpoint.horizonMin}m
                     </text>
                   </g>
                 );
               })}
 
-              <text x={2} y={4} fontSize="2.4" fill="#475569">N</text>
-              <text x={96} y={52} fontSize="2.4" fill="#475569">E</text>
-              <text x={2} y={98} fontSize="2.4" fill="#475569">S</text>
-              <text x={2} y={52} fontSize="2.4" fill="#475569">W</text>
+              <text x={2} y={4} fontSize="2.2" fill="#475569" fontWeight={500}>N</text>
+              <text x={96} y={52} fontSize="2.2" fill="#475569" fontWeight={500}>E</text>
+              <text x={2} y={98} fontSize="2.2" fill="#475569" fontWeight={500}>S</text>
+              <text x={2} y={52} fontSize="2.2" fill="#475569" fontWeight={500}>W</text>
             </svg>
           )}
 
-          <div className="absolute top-3 right-3 bg-white/92 backdrop-blur-sm rounded-lg p-2.5 shadow-md">
-            <div className="text-[11px] font-semibold mb-1.5">Wind Speed (Dynamic)</div>
-            <div className="space-y-1 text-[11px]">
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-1 bg-blue-500 rounded" />
-                <span>Low ({formatSpeedRange(speedBands.minKt, speedBands.lowMaxKt)})</span>
+          {/* Speed Legend */}
+          <div className="absolute top-2.5 right-2.5 bg-slate-900/90 backdrop-blur-sm rounded-lg p-2 border border-white/8">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Speed</div>
+            <div className="space-y-1 text-[10px]">
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 h-0.5 bg-blue-500 rounded" />
+                <span className="text-slate-400">Low ({formatSpeedRange(speedBands.minKt, speedBands.lowMaxKt)})</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-1 bg-amber-500 rounded" />
-                <span>Medium ({formatSpeedRange(speedBands.lowMaxKt, speedBands.medMaxKt)})</span>
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 h-0.5 bg-amber-500 rounded" />
+                <span className="text-slate-400">Med ({formatSpeedRange(speedBands.lowMaxKt, speedBands.medMaxKt)})</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-1 bg-red-500 rounded" />
-                <span>Strong ({formatSpeedRange(speedBands.highMinKt, speedBands.maxKt)})</span>
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 h-0.5 bg-red-500 rounded" />
+                <span className="text-slate-400">High ({formatSpeedRange(speedBands.highMinKt, speedBands.maxKt)})</span>
               </div>
             </div>
           </div>
 
           {tileLoadError && (
-            <div className="absolute bottom-3 left-3 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 text-[11px] text-amber-800 shadow-sm">
-              Some map tiles failed to load. Trajectory data is still available.
+            <div className="absolute bottom-2.5 left-2.5 bg-amber-500/10 border border-amber-500/20 rounded-md px-2 py-1 text-[10px] text-amber-400">
+              Some map tiles failed to load.
             </div>
           )}
         </div>
 
         {limitedByForecast && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-3">
+          <p className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/15 rounded-md px-2.5 py-1.5 mt-2">
             Some horizons are limited by available forecast range.
           </p>
         )}
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <h3 className="font-semibold mb-4">Reachability Endpoints</h3>
+      {/* ── Reachability Endpoints ────────────────────── */}
+      <div className="rounded-xl border border-white/8 bg-surface-elevated p-3 sm:p-4">
+        <h3 className="text-xs font-semibold text-white uppercase tracking-wider mb-3">Reachability Endpoints</h3>
         {baselineEndpoints.length === 0 ? (
-          <p className="text-sm text-gray-500">No trajectory endpoints available.</p>
+          <p className="text-xs text-slate-500">No trajectory endpoints available.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {baselineEndpoints.map((endpoint) => (
               <div
                 key={`metric-${endpoint.horizonMin}`}
-                className="grid grid-cols-2 md:grid-cols-5 gap-2 bg-gray-50 rounded-xl p-3 text-sm"
+                className="grid grid-cols-2 md:grid-cols-5 gap-2 bg-white/[0.03] rounded-lg p-2.5 text-xs border border-white/4"
               >
                 <div>
-                  <div className="text-xs text-gray-500">Horizon</div>
-                  <div className="font-semibold">{endpoint.horizonMin} min</div>
+                  <div className="text-[10px] text-slate-600">Horizon</div>
+                  <div className="font-semibold text-white">{endpoint.horizonMin} min</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500">Endpoint</div>
-                  <div className="font-medium">{endpoint.lat.toFixed(4)}, {endpoint.lon.toFixed(4)}</div>
+                  <div className="text-[10px] text-slate-600">Endpoint</div>
+                  <div className="font-medium text-slate-300">{endpoint.lat.toFixed(4)}, {endpoint.lon.toFixed(4)}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500">Distance</div>
-                  <div className="font-medium">{endpoint.distanceNm.toFixed(1)} NM</div>
+                  <div className="text-[10px] text-slate-600">Distance</div>
+                  <div className="font-medium text-slate-300">{endpoint.distanceNm.toFixed(1)} NM</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500">Bearing</div>
-                  <div className="font-medium">{Math.round(endpoint.bearingDeg)}°</div>
+                  <div className="text-[10px] text-slate-600">Bearing</div>
+                  <div className="font-medium text-slate-300">{Math.round(endpoint.bearingDeg)}°</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500">Avg GS</div>
-                  <div className="font-medium">{endpoint.avgGroundspeedKt.toFixed(1)} kt</div>
+                  <div className="text-[10px] text-slate-600">Avg GS</div>
+                  <div className="font-medium text-slate-300">{endpoint.avgGroundspeedKt.toFixed(1)} kt</div>
                 </div>
                 {endpoint.limitedByForecast && (
-                  <div className="col-span-2 md:col-span-5 text-xs text-amber-700">Limited by forecast range.</div>
+                  <div className="col-span-2 md:col-span-5 text-[10px] text-amber-400">Limited by forecast range.</div>
                 )}
               </div>
             ))}
@@ -723,36 +740,49 @@ export function WindVisualization({ location }: WindVisualizationProps) {
         )}
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <h3 className="font-semibold mb-4">Vertical Wind Profile at {timeDisplay}</h3>
+      {/* ── Vertical Wind Profile ─────────────────────── */}
+      <div className="rounded-xl border border-white/8 bg-surface-elevated p-3 sm:p-4">
+        <h3 className="text-xs font-semibold text-white uppercase tracking-wider mb-3">Vertical Wind Profile · {timeDisplay}</h3>
 
-        <div className="space-y-3">
+        <div className="space-y-1.5">
           {PROFILE_ALTITUDES.map((altitude) => {
             const { speedKt, direction } = getProfileForAltitude(altitude);
             const maxSpeed = Math.max(speedBands.maxKt, 30);
             const barWidth = Math.min(100, (speedKt / maxSpeed) * 100);
+            const isSelected = altitude === selectedAltitude;
 
             return (
               <div
                 key={altitude}
-                className={`p-4 rounded-xl border-2 transition-all ${
-                  altitude === selectedAltitude ? "bg-blue-50 border-blue-300" : "bg-gray-50 border-gray-200"
-                }`}
+                className={cn(
+                  "p-2.5 rounded-lg border transition-all",
+                  isSelected
+                    ? "bg-amber-500/8 border-amber-500/20"
+                    : "bg-white/[0.02] border-white/4 hover:bg-white/[0.04]",
+                )}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
-                    <div className="font-semibold text-sm w-24">{altitude.toLocaleString()} ft</div>
-                    <div className="flex items-center gap-2">
-                      <ArrowUp className="w-4 h-4 text-blue-600" style={{ transform: `rotate(${direction}deg)` }} />
-                      <span className="text-sm font-medium">{getDirectionName(direction)}</span>
-                      <span className="text-xs text-gray-500">({Math.round(direction)}°)</span>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className={cn("font-semibold text-xs w-20", isSelected ? "text-amber-300" : "text-slate-300")}>
+                      {altitude.toLocaleString()} ft
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <ArrowUp
+                        className={cn("w-3.5 h-3.5", isSelected ? "text-amber-400" : "text-slate-500")}
+                        style={{ transform: `rotate(${direction}deg)` }}
+                      />
+                      <span className="text-xs text-slate-400">{getDirectionName(direction)}</span>
+                      <span className="text-[10px] text-slate-600">({Math.round(direction)}°)</span>
                     </div>
                   </div>
-                  <div className="font-semibold text-blue-600">{speedKt} kt</div>
+                  <div className={cn("font-semibold text-xs", isSelected ? "text-amber-300" : "text-slate-300")}>{speedKt} kt</div>
                 </div>
 
-                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${barWidth}%`, backgroundColor: getSpeedColor(speedKt) }} />
+                <div className="w-full bg-white/5 rounded-full h-1 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${barWidth}%`, backgroundColor: getSpeedColor(speedKt) }}
+                  />
                 </div>
               </div>
             );
