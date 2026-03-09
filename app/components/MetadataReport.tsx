@@ -15,9 +15,10 @@ interface Location {
 
 interface MetadataReportProps {
   location: Location;
+  embedded?: boolean;
 }
 
-export function MetadataReport({ location }: MetadataReportProps) {
+export function MetadataReport({ location, embedded = false }: MetadataReportProps) {
   const metadata = {
     dataSources: [
       { name: "METAR", station: location.airport, updateFrequency: "Hourly", lastUpdate: new Date(Date.now() - 15 * 60 * 1000), status: "Active" },
@@ -55,17 +56,18 @@ export function MetadataReport({ location }: MetadataReportProps) {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold mb-2">Metadata Report</h2>
-            <p className="text-gray-600">Data sources, model information, and quality metrics for {location.name}</p>
+    <div className={embedded ? "w-full space-y-6" : "w-full p-6 xl:px-8 space-y-6"}>
+      {!embedded && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold mb-2">Metadata Report</h2>
+              <p className="text-gray-600">Data sources, model information, and quality metrics for {location.name}</p>
+            </div>
+            <BarChart3 className="w-8 h-8 text-blue-500" />
           </div>
-          <BarChart3 className="w-8 h-8 text-blue-500" />
         </div>
-      </div>
+      )}
 
       {/* Data Sources */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100">

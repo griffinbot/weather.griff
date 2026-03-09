@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, MapPin, Settings, Wind, FileText, Plane, BarChart3, Calendar, Loader2, Bookmark, BookmarkCheck, X, Trash2, ChevronLeft, ChevronRight, Menu, MessageSquare } from "lucide-react";
+import { Search, MapPin, Settings, Wind, FileText, Plane, Calendar, Loader2, Bookmark, BookmarkCheck, X, Trash2, ChevronLeft, ChevronRight, Menu, MessageSquare } from "lucide-react";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { ScrollArea } from "./components/ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
 import { CurrentWeather } from "./components/CurrentWeather";
 import { WindDataTable } from "./components/WindDataTable";
 import { WeatherDiscussion } from "./components/WeatherDiscussion";
-import { MetadataReport } from "./components/MetadataReport";
 import { AirportReports } from "./components/AirportReports";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { WindVisualization } from "./components/WindVisualization";
@@ -21,9 +20,9 @@ import { cachedFetch, weatherGovFetch } from "./services/weatherProxy";
 // Initial mock data to populate the app before any search
 const initialLocations = [
   { id: "1", name: "SeaTac, WA", lat: 47.4502, lon: -122.3088, airport: "KSEA" },
-  { id: "2", name: "Enumclaw, WA", lat: 47.1850, lon: -121.9644, airport: "WA77" },
+  { id: "2", name: "Boeing Field, WA", lat: 47.5300, lon: -122.3019, airport: "KBFI" },
   { id: "3", name: "Joint Base Lewis-McChord, WA", lat: 47.1376, lon: -122.4762, airport: "KTCM" },
-  { id: "4", name: "Boeing Field, WA", lat: 47.5300, lon: -122.3019, airport: "KBFI" },
+  { id: "4", name: "Renton Municipal, WA", lat: 47.4931, lon: -122.2162, airport: "KRNT" },
 ];
 
 const navTabs = [
@@ -32,7 +31,6 @@ const navTabs = [
   { value: "airports", label: "Airports", mobileLabel: "Airports", icon: Plane },
   { value: "outlook", label: "7-Day", mobileLabel: "7-Day", icon: Calendar },
   { value: "wind-viz", label: "Wind Viz", mobileLabel: "Winds", icon: Wind },
-  { value: "metadata", label: "Metadata", mobileLabel: "Data", icon: BarChart3 },
   { value: "flight", label: "Flight Plan", mobileLabel: "Flight", icon: Plane },
   { value: "settings", label: "Settings", mobileLabel: "Settings", icon: Settings },
 ] as const;
@@ -132,6 +130,13 @@ function normalizeAirportCode(value: string | undefined | null): string | null {
   return normalized;
 }
 
+function normalizeIcaoCode(value: string | undefined | null): string | null {
+  const normalized = normalizeAirportCode(value);
+  if (!normalized) return null;
+  if (!/^[A-Z]{4}$/.test(normalized)) return null;
+  return normalized;
+}
+
 function normalizeAirportSearchCode(value: string | undefined | null): string | null {
   const normalized = normalizeAirportCode(value);
   if (!normalized) return null;
@@ -149,16 +154,24 @@ function airportCodeFromUserSearch(
 }
 
 function bestAirportCodeFromResult(result: SearchResult): string | null {
+  const directIcao = normalizeIcaoCode(result.extratags?.icao);
+  if (directIcao) return directIcao;
+
+  const iata = normalizeAirportCode(result.extratags?.iata);
+  if (iata && /^[A-Z]{3}$/.test(iata) && isUSResult(result)) return `K${iata}`;
+
   return (
-    normalizeAirportCode(result.extratags?.icao) ||
-    normalizeAirportCode(result.extratags?.iata) ||
-    normalizeAirportCode(result.extratags?.ref) ||
-    normalizeAirportCode(result.extratags?.local_ref)
+    normalizeIcaoCode(result.extratags?.ref) ||
+    normalizeIcaoCode(result.extratags?.local_ref)
   );
 }
 
 function isPlaceholderAirportCode(code: string): boolean {
   return code === "ARPT" || code === "GPS";
+}
+
+function isIcaoAirportResult(result: SearchResult): boolean {
+  return bestAirportCodeFromResult(result) !== null;
 }
 
 function normalizeOfficeCode(value: unknown): string | null {
@@ -384,7 +397,7 @@ export default function App() {
     initialLocationsState.selectedLocation,
   );
   const [activeTab, setActiveTab] = useState("overview");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   
   // Search state
@@ -491,10 +504,11 @@ export default function App() {
           1800,
         );
         const usProxyResults = (proxyData ?? []).filter(isUSResult);
-        if (usProxyResults.length > 0) {
+        const airportProxyResults = usProxyResults.filter(isIcaoAirportResult);
+        if (airportProxyResults.length > 0) {
           if (!cancelled) {
             setSearchResults(
-              prioritizeSearchResults(dedupeByPlaceId(usProxyResults), query, userCoordinates),
+              prioritizeSearchResults(dedupeByPlaceId(airportProxyResults), query, userCoordinates),
             );
           }
           return;
@@ -517,10 +531,11 @@ export default function App() {
         ]);
 
         const usDirectResults = (directNominatim ?? []).filter(isUSResult);
-        if (usDirectResults.length > 0) {
+        const airportDirectResults = usDirectResults.filter(isIcaoAirportResult);
+        if (airportDirectResults.length > 0) {
           if (!cancelled) {
             setSearchResults(
-              prioritizeSearchResults(dedupeByPlaceId(usDirectResults), query, userCoordinates),
+              prioritizeSearchResults(dedupeByPlaceId(airportDirectResults), query, userCoordinates),
             );
           }
           return;
@@ -531,6 +546,7 @@ export default function App() {
 
         const mapped: SearchResult[] = results
           .filter((r) => (r.country_code ?? "").toUpperCase() === "US")
+          .filter(() => looksLikeAirportCode)
           .map((r) => ({
           place_id: r.id,
           lat: String(r.latitude),
@@ -543,11 +559,10 @@ export default function App() {
             state: r.admin1,
             country_code: r.country_code?.toLowerCase(),
           },
-          extratags: looksLikeAirportCode
-            ? (normalizedCodeQuery.length === 4
+          extratags:
+            normalizedCodeQuery.length === 4
               ? { icao: normalizedCodeQuery }
-              : { iata: normalizedCodeQuery, icao: `K${normalizedCodeQuery}` })
-            : undefined,
+              : { iata: normalizedCodeQuery, icao: `K${normalizedCodeQuery}` },
         }));
 
         if (!cancelled) {
@@ -571,11 +586,11 @@ export default function App() {
 
   // Helper to create location object from search result
   const createLocationFromResult = (result: SearchResult, preferredAirportCode?: string | null) => {
-    // Determine airport code (IATA > ICAO > Generic)
-    const airportLike = isAirportLike(result);
+    // Restrict saved/selected locations to ICAO airport identifiers.
     const resolvedAirportCode = bestAirportCodeFromResult(result);
-    const preferred = airportLike ? airportCodeFromUserSearch(preferredAirportCode, result) : null;
-    const airportCode = preferred || resolvedAirportCode || (airportLike ? "ARPT" : "GPS");
+    const preferred = airportCodeFromUserSearch(preferredAirportCode, result);
+    const airportCode = normalizeIcaoCode(preferred) || resolvedAirportCode;
+    if (!airportCode) return null;
 
     // Format the location name (City, State)
     let locationName = result.display_name.split(',')[0];
@@ -601,7 +616,7 @@ export default function App() {
       lat: parseFloat(result.lat),
       lon: parseFloat(result.lon),
       airport: airportCode,
-      airportLookupPending: airportLike && !preferred && !resolvedAirportCode,
+      airportLookupPending: false,
     };
   };
 
@@ -628,6 +643,7 @@ export default function App() {
   // Select a location from search (doesn't automatically save)
   const handleSelectLocation = (result: SearchResult) => {
     const nextLocation = createLocationFromResult(result, searchQuery);
+    if (!nextLocation) return;
 
     setSavedLocations((prev) => {
       const existing = prev.find((loc) => loc.id === nextLocation.id);
@@ -659,6 +675,7 @@ export default function App() {
   const handleSaveLocation = (result: SearchResult, e: React.MouseEvent) => {
     e.stopPropagation();
     const newLocation = createLocationFromResult(result, searchQuery);
+    if (!newLocation) return;
     
     setSavedLocations((prev) => {
       if (!prev.find((loc) => loc.id === newLocation.id)) {
@@ -687,11 +704,10 @@ export default function App() {
   };
 
   const getAirportCode = (result: SearchResult, preferredAirportCode?: string | null) => {
-    const preferred = isAirportLike(result) ? airportCodeFromUserSearch(preferredAirportCode, result) : null;
-    if (preferred) return preferred;
+    const preferred = airportCodeFromUserSearch(preferredAirportCode, result);
+    if (normalizeIcaoCode(preferred)) return preferred;
     const resolved = bestAirportCodeFromResult(result);
     if (resolved) return resolved;
-    if (isAirportLike(result)) return "ARPT";
     return null;
   };
 
@@ -885,14 +901,117 @@ export default function App() {
   }, [activeTab]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f5f5f7] pb-8 sm:pb-[72px]">
+    <div className="flex min-h-screen flex-col bg-[#f5f5f7] pb-8 sm:pb-[72px] lg:h-[100dvh] lg:min-h-[100dvh] lg:overflow-hidden">
       {/* Main Content Area with Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
         {/* Top Navigation - Tab Menu */}
         <div className="bg-white border-b border-gray-200 px-3 sm:px-6 pt-3 sm:pt-4 relative z-50">
           <div className="pb-3 sm:pb-4 space-y-2">
             <div className="flex items-center gap-2 sm:gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-3">
-              <div className="flex-shrink-0">
+              <div className="flex shrink-0 items-center gap-2">
+                <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-xl border-gray-200 bg-white px-3 text-gray-700 shadow-none hover:bg-gray-50"
+                    >
+                      <Menu className="h-4 w-4" />
+                      <span className="ml-2 hidden text-xs font-semibold sm:inline">Menu</span>
+                      {isMenuOpen ? (
+                        <ChevronLeft className="ml-2 h-3.5 w-3.5 text-gray-400" />
+                      ) : (
+                        <ChevronRight className="ml-2 h-3.5 w-3.5 text-gray-400" />
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    side="bottom"
+                    sideOffset={10}
+                    className="w-[22rem] rounded-2xl border border-gray-200 bg-white p-0 shadow-2xl"
+                  >
+                    <div className="border-b border-gray-100 px-4 py-3">
+                      <div className="text-sm font-semibold text-gray-900">Quick Menu</div>
+                      <div className="mt-1 text-xs text-gray-500">
+                        Jump between views and saved briefing locations.
+                      </div>
+                    </div>
+
+                    <div className="space-y-5 p-4">
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+                          Views
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {navTabs.map((tab) => {
+                            const Icon = tab.icon;
+                            const isActive = activeTab === tab.value;
+                            return (
+                              <button
+                                key={`menu-${tab.value}`}
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab(tab.value);
+                                  setIsMenuOpen(false);
+                                }}
+                                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors ${
+                                  isActive
+                                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                                    : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                                }`}
+                              >
+                                <Icon className="h-4 w-4 shrink-0" />
+                                <span className="truncate font-medium">{tab.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+                          Locations
+                        </div>
+                        <div className="space-y-2">
+                          {savedLocations.map((location) => {
+                            const isSelected = selectedLocation.id === location.id;
+                            return (
+                              <button
+                                key={`menu-location-${location.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedLocation(location);
+                                  setIsMenuOpen(false);
+                                }}
+                                className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                                  isSelected
+                                    ? "border-blue-200 bg-blue-50"
+                                    : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-medium text-gray-900">
+                                    {location.name}
+                                  </div>
+                                  <div className="mt-0.5 text-xs font-semibold tracking-wide text-blue-600">
+                                    {location.airport}
+                                  </div>
+                                </div>
+                                {isSelected && (
+                                  <span className="rounded-full bg-blue-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+                                    Live
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
                 <img
                   src="/favicon.svg"
                   alt="Griff"
@@ -998,7 +1117,7 @@ export default function App() {
 
             {/* Tab Navigation */}
             <div className="min-w-0 w-full overflow-x-visible md:overflow-x-auto lg:overflow-visible" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <TabsList className="bg-gray-100 p-1 rounded-2xl mb-0 relative z-40 grid w-full grid-cols-4 gap-1 h-auto md:inline-flex md:w-max md:whitespace-nowrap md:rounded-xl md:h-10 lg:grid lg:w-full lg:grid-cols-8 lg:whitespace-normal">
+              <TabsList className="bg-gray-100 p-1 rounded-2xl mb-0 relative z-40 grid w-full grid-cols-4 gap-1 h-auto md:inline-flex md:w-max md:whitespace-nowrap md:rounded-xl md:h-10 lg:grid lg:w-full lg:grid-cols-7 lg:whitespace-normal">
                 {navTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
@@ -1030,9 +1149,9 @@ export default function App() {
         />
 
         {/* Tab Content */}
-        <div className="flex-1 bg-[#f5f5f7]">
+        <div className="flex-1 min-h-0 bg-[#f5f5f7] lg:overflow-y-auto">
           <TabsContent value="overview" className="m-0 h-full focus-visible:ring-0">
-            <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
+            <div className="w-full p-3 sm:p-6 space-y-4 sm:space-y-6">
               {/* Current Weather */}
               <CurrentWeather
                 location={selectedLocation}
@@ -1048,44 +1167,38 @@ export default function App() {
           </TabsContent>
 
           <TabsContent value="discussion" className="m-0 h-full focus-visible:ring-0">
-            <div className="max-w-7xl mx-auto">
+            <div className="w-full">
               <WeatherDiscussion location={selectedLocation} />
             </div>
           </TabsContent>
 
           <TabsContent value="airports" className="m-0 h-full focus-visible:ring-0">
-            <div className="max-w-7xl mx-auto">
+            <div className="w-full">
               <AirportReports location={selectedLocation} />
             </div>
           </TabsContent>
 
           <TabsContent value="outlook" className="m-0 h-full focus-visible:ring-0">
-            <div className="max-w-7xl mx-auto">
+            <div className="w-full">
               <SevenDayOutlook location={selectedLocation} />
             </div>
           </TabsContent>
 
           <TabsContent value="wind-viz" className="m-0 h-full focus-visible:ring-0">
-            <div className="max-w-7xl mx-auto">
+            <div className="w-full">
               <WindVisualization location={selectedLocation} />
             </div>
           </TabsContent>
 
-          <TabsContent value="metadata" className="m-0 h-full focus-visible:ring-0">
-            <div className="max-w-7xl mx-auto">
-              <MetadataReport location={selectedLocation} />
-            </div>
-          </TabsContent>
-
           <TabsContent value="flight" className="m-0 h-full focus-visible:ring-0">
-            <div className="max-w-7xl mx-auto">
+            <div className="w-full">
               <FlightPlanning location={selectedLocation} />
             </div>
           </TabsContent>
 
           <TabsContent value="settings" className="m-0 h-full focus-visible:ring-0">
-            <div className="max-w-7xl mx-auto">
-              <SettingsPanel />
+            <div className="w-full">
+              <SettingsPanel location={selectedLocation} />
             </div>
           </TabsContent>
         </div>

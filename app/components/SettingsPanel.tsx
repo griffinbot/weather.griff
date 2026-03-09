@@ -1,12 +1,20 @@
-import { Settings, Bell, Globe, Thermometer, Wind, Gauge, Mail } from "lucide-react";
+import { Settings, Bell, Globe, Thermometer, Wind, Gauge, Mail, BarChart3 } from "lucide-react";
 import { Switch } from "./ui/switch";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Separator } from "./ui/separator";
+import { MetadataReport } from "./MetadataReport";
 
-export function SettingsPanel() {
+interface SettingsPanelProps {
+  location: {
+    name: string;
+    airport: string;
+  };
+}
+
+export function SettingsPanel({ location }: SettingsPanelProps) {
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="w-full p-6 xl:px-8 space-y-6">
       {/* Header */}
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
         <div className="flex items-center justify-between">
@@ -221,6 +229,22 @@ export function SettingsPanel() {
           </div>
         </div>
       </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="font-semibold text-lg mb-2 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-blue-500" />
+              Metadata
+            </h3>
+            <p className="text-sm text-gray-500">
+              Data sources, model runs, and confidence metrics for {location.name}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <MetadataReport location={location} embedded />
 
       {/* About */}
       <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200">

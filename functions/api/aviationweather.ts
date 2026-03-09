@@ -26,7 +26,7 @@ export async function onRequestGet(context: EventContext): Promise<Response> {
     const upstreamParams = new URLSearchParams(incomingUrl.searchParams);
     upstreamParams.delete("type");
     const query = upstreamParams.toString();
-    const upstreamUrl = `https://www.aviationweather.gov/api/data/${type}${query ? `?${query}` : ""}`;
+    const upstreamUrl = `https://aviationweather.gov/api/data/${type}${query ? `?${query}` : ""}`;
 
     const response = await fetchJsonWithCache({
       request,
