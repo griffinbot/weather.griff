@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Search, Settings2, Sparkles } from "lucide-react";
+import { Clock3, Loader2, MapPin, Search, Settings2, Sparkles, Wind } from "lucide-react";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { cn } from "./components/ui/utils";
@@ -120,103 +120,92 @@ export default function App() {
     await persistLocations(nextLocations, nextSelected);
   };
 
+  const current = briefing?.current;
+
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f7f4ec_0%,#f5f5f7_24%,#eef2f7_100%)] text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-[1400px] flex-col px-4 pb-8 pt-4 sm:px-6 lg:px-8">
-        <header className="sticky top-4 z-40 mb-5 rounded-[32px] border border-white/70 bg-white/90 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="flex items-center gap-3">
-                <div className="rounded-[22px] bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-orange-300">
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-4 pb-8 pt-6 sm:px-6 lg:px-8">
+        <header className="relative overflow-visible rounded-[30px] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 p-5 shadow-[0_26px_70px_rgba(15,23,42,0.45)] sm:p-6">
+          <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-orange-400/10 blur-3xl" />
+
+          <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="rounded-full border border-orange-300/20 bg-orange-400/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-orange-200">
                   Griff Weather
                 </div>
-                <div className="hidden rounded-[22px] bg-slate-100 px-4 py-3 text-sm text-slate-500 sm:block">
-                  Aviation briefing-first
+                <div className="rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs text-slate-300">
+                  Rebuilt UI • Aviation-first workflow
                 </div>
               </div>
 
-              <div className="relative lg:flex-1">
+              <div className="relative">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   onFocus={() => setSearchOpen(searchResults.length > 0)}
                   placeholder="Search airport or city"
-                  className="h-12 rounded-[22px] border-slate-200 bg-slate-50 pl-11 pr-11 text-base"
+                  className="h-12 rounded-2xl border-white/10 bg-slate-800/80 pl-11 pr-11 text-base text-white placeholder:text-slate-400"
                 />
-                {searching && <Loader2 className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-orange-500" />}
+                {searching && (
+                  <Loader2 className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-orange-300" />
+                )}
 
                 {searchOpen && (searchResults.length > 0 || searchQuery.trim().length >= 2) && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+0.75rem)] rounded-[24px] border border-slate-200 bg-white p-2 shadow-2xl">
+                  <div className="absolute left-0 right-0 top-[calc(100%+0.75rem)] z-30 rounded-2xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl backdrop-blur-xl">
                     {searchResults.length > 0 ? (
                       searchResults.map((result) => (
                         <button
                           key={result.id}
                           type="button"
                           onClick={() => void addSearchResult(result)}
-                          className="flex w-full items-start justify-between rounded-[18px] px-4 py-3 text-left transition hover:bg-slate-50"
+                          className="flex w-full items-start justify-between rounded-xl px-4 py-3 text-left transition hover:bg-white/5"
                         >
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-slate-900">{result.name}</span>
+                              <span className="font-semibold text-white">{result.name}</span>
                               {result.airport && (
-                                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-800">
+                                <span className="rounded-full bg-orange-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-200">
                                   {result.airport}
                                 </span>
                               )}
                             </div>
-                            <div className="mt-1 text-sm text-slate-500">{result.subtitle || "Airport search result"}</div>
+                            <div className="mt-1 text-sm text-slate-400">{result.subtitle || "Airport search result"}</div>
                           </div>
-                          <span className="text-xs font-medium text-slate-400">{result.source}</span>
+                          <span className="text-xs font-medium text-slate-500">{result.source}</span>
                         </button>
                       ))
                     ) : (
-                      <div className="px-4 py-3 text-sm text-slate-500">No locations found.</div>
+                      <div className="px-4 py-3 text-sm text-slate-400">No locations found.</div>
                     )}
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <Button className="h-12 rounded-[22px] bg-slate-950 px-4 hover:bg-slate-800" onClick={() => setAskOpen(true)} disabled={!selectedLocation}>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Ask
-                </Button>
-                <Button variant="outline" className="h-12 rounded-[22px] border-slate-200 px-4" onClick={() => setProfileOpen(true)}>
-                  <Settings2 className="mr-2 h-4 w-4" />
-                  {sessionLoading ? "Account" : session?.authenticated ? "Profile" : "Sign in"}
-                </Button>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex gap-2 overflow-x-auto pb-1">
+              <div className="flex flex-wrap gap-2">
                 {profile.savedLocations.map((location) => {
                   const selected = selectedLocation?.id === location.id;
-                  const temperature = selected ? briefing?.current?.temperature : null;
                   return (
                     <div key={location.id} className="group flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => void selectLocation(location.id)}
                         className={cn(
-                          "flex min-w-[170px] items-center justify-between rounded-[22px] border px-4 py-3 text-left transition",
+                          "rounded-2xl border px-4 py-2.5 text-left transition",
                           selected
-                            ? "border-slate-950 bg-slate-950 text-white"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                            ? "border-orange-300/30 bg-orange-300/10 text-orange-50"
+                            : "border-white/15 bg-white/5 text-slate-200 hover:border-white/30",
                         )}
                       >
-                        <div>
-                          <div className="text-sm font-semibold">{location.airport}</div>
-                          <div className={cn("mt-1 text-xs", selected ? "text-slate-300" : "text-slate-500")}>{location.name}</div>
-                        </div>
-                        {temperature != null && <div className="text-2xl font-light">{temperature}°</div>}
+                        <div className="text-xs font-bold tracking-wide">{location.airport}</div>
+                        <div className="text-xs text-slate-300">{location.name}</div>
                       </button>
                       {profile.savedLocations.length > 1 && (
                         <button
                           type="button"
                           onClick={() => void removeLocation(location.id)}
-                          className="rounded-full px-2 py-1 text-xs text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-white hover:text-red-500"
+                          className="rounded-full px-2 py-1 text-xs text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-white/5 hover:text-red-300"
                           aria-label={`Remove ${location.name}`}
                         >
                           Remove
@@ -226,49 +215,113 @@ export default function App() {
                   );
                 })}
               </div>
+            </div>
 
-              <nav className="grid gap-2 sm:grid-cols-3">
-                {PRIMARY_TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={cn(
-                      "rounded-[20px] px-4 py-3 text-sm font-semibold transition",
-                      activeTab === tab.id
-                        ? "bg-orange-500 text-white shadow-[0_10px_30px_rgba(249,115,22,0.28)]"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
+            <section className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Current Conditions</p>
+                  <h1 className="mt-2 text-2xl font-semibold text-white">
+                    {selectedLocation?.name || "Select a location"}
+                  </h1>
+                  {selectedLocation && (
+                    <p className="mt-1 flex items-center gap-1 text-sm text-slate-300">
+                      <MapPin className="h-4 w-4" />
+                      {selectedLocation.airport}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <div className="text-5xl font-light text-white">{current?.temperature ?? "--"}°</div>
+                  <div className="text-xs text-slate-400">Feels like {current?.feelsLike ?? "--"}°</div>
+                </div>
+              </div>
+
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                <div className="rounded-2xl bg-white/5 p-3">
+                  <p className="text-xs text-slate-400">Wind</p>
+                  <p className="mt-1 flex items-center gap-1 text-sm font-medium text-white">
+                    <Wind className="h-4 w-4 text-orange-200" />
+                    {current?.windSpeed ?? "--"} kt
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-white/5 p-3">
+                  <p className="text-xs text-slate-400">Visibility</p>
+                  <p className="mt-1 text-sm font-medium text-white">{current?.visibility ?? "--"} mi</p>
+                </div>
+                <div className="rounded-2xl bg-white/5 p-3">
+                  <p className="text-xs text-slate-400">Humidity</p>
+                  <p className="mt-1 text-sm font-medium text-white">{current?.humidity ?? "--"}%</p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Button
+                  className="h-11 rounded-xl bg-white px-4 text-slate-900 hover:bg-slate-200"
+                  onClick={() => setAskOpen(true)}
+                  disabled={!selectedLocation}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Ask Assistant
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-xl border-white/20 bg-transparent px-4 text-slate-100 hover:bg-white/10"
+                  onClick={() => setProfileOpen(true)}
+                >
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  {sessionLoading ? "Account" : session?.authenticated ? "Profile" : "Sign in"}
+                </Button>
+              </div>
+            </section>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+            <nav className="grid w-full gap-2 sm:w-auto sm:grid-cols-3">
+              {PRIMARY_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "rounded-xl px-4 py-2.5 text-sm font-semibold transition",
+                    activeTab === tab.id
+                      ? "bg-orange-400 text-slate-950"
+                      : "bg-white/5 text-slate-300 hover:bg-white/10",
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <Clock3 className="h-4 w-4" />
+              {briefing?.lastUpdated
+                ? `Updated ${new Date(briefing.lastUpdated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                : "Awaiting location data"}
             </div>
           </div>
         </header>
 
-        <main className="flex-1">
-          {activeTab === "briefing" && (
-            <BriefingView briefing={briefing} loading={briefingLoading} error={briefingError} />
-          )}
+        <main className="mt-5 flex-1">
+          {activeTab === "briefing" && <BriefingView briefing={briefing} loading={briefingLoading} error={briefingError} />}
 
           {activeTab === "winds" && selectedLocation && (
             <div className="space-y-5">
-              <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm">
+              <section className="rounded-[28px] border border-white/10 bg-slate-900/80 p-6 shadow-sm">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
-                    <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Winds</h1>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Table and visualization views read from the same backend winds contract.
+                    <h2 className="text-2xl font-semibold tracking-tight text-white">Winds Aloft</h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">
+                      Compare tabular reports with vector visualization for route planning.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 rounded-[22px] bg-slate-100 p-1">
+                  <div className="flex items-center gap-2 rounded-xl bg-white/5 p-1">
                     <button
                       type="button"
                       className={cn(
-                        "rounded-[18px] px-4 py-2 text-sm font-medium transition",
-                        windsSubview === "table" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500",
+                        "rounded-lg px-4 py-2 text-sm font-medium transition",
+                        windsSubview === "table" ? "bg-white text-slate-900" : "text-slate-300",
                       )}
                       onClick={() => setWindsSubview("table")}
                     >
@@ -277,8 +330,8 @@ export default function App() {
                     <button
                       type="button"
                       className={cn(
-                        "rounded-[18px] px-4 py-2 text-sm font-medium transition",
-                        windsSubview === "visualization" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500",
+                        "rounded-lg px-4 py-2 text-sm font-medium transition",
+                        windsSubview === "visualization" ? "bg-white text-slate-900" : "text-slate-300",
                       )}
                       onClick={() => setWindsSubview("visualization")}
                     >
@@ -298,17 +351,6 @@ export default function App() {
 
           {activeTab === "forecast" && <ForecastView briefing={briefing} />}
         </main>
-
-        <footer className="mt-6 border-t border-slate-200 px-2 py-4 text-sm text-slate-500">
-          {briefing?.lastUpdated
-            ? `Data current as of ${new Date(briefing.lastUpdated).toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}`
-            : "Weather data updates when a location is selected."}
-        </footer>
       </div>
 
       <ProfileDialog
