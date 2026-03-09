@@ -26,6 +26,7 @@ const CLIENT_LIMITS = {
   "googleelevation": { capacity: 120, refillPerSecond: 2 },
   "tfr": { capacity: 240, refillPerSecond: 4 },
   "aviationalerts": { capacity: 240, refillPerSecond: 4 },
+  "domain": { capacity: 240, refillPerSecond: 12 },
 } as const;
 
 const PROVIDER_LIMITS = {
@@ -41,6 +42,7 @@ const PROVIDER_LIMITS = {
   "googleelevation": { capacity: 1000, refillPerSecond: 16 },
   "tfr": { capacity: 2400, refillPerSecond: 40 },
   "aviationalerts": { capacity: 2400, refillPerSecond: 40 },
+  "domain": { capacity: 2400, refillPerSecond: 120 },
 } as const;
 
 function getClientIp(request: Request): string {
@@ -53,6 +55,12 @@ function getClientIp(request: Request): string {
 }
 
 function providerFromPath(pathname: string): keyof typeof CLIENT_LIMITS | null {
+  if (pathname === "/api/briefing") return "domain";
+  if (pathname === "/api/winds") return "domain";
+  if (pathname === "/api/search") return "domain";
+  if (pathname.startsWith("/api/profile")) return "domain";
+  if (pathname === "/api/assistant/query") return "domain";
+  if (pathname === "/api/flight/brief") return "domain";
   if (pathname.startsWith("/api/nominatim/")) return "nominatim";
   if (pathname.startsWith("/api/position/")) return "nominatim";
   if (pathname.startsWith("/api/open-meteo/")) return "open-meteo";
@@ -83,7 +91,15 @@ export async function onRequest(context: EventContext): Promise<Response> {
     return new Response(null, { status: 204, headers: buildCorsHeaders(request, env) });
   }
 
-  if (request.method !== "GET") {
+  const isMutableDomainRoute =
+    url.pathname.startsWith("/api/profile") ||
+    url.pathname === "/api/assistant/query" ||
+    url.pathname === "/api/flight/brief";
+  const allowedMethod =
+    request.method === "GET" ||
+    (isMutableDomainRoute && (request.method === "PUT" || request.method === "POST"));
+
+  if (!allowedMethod) {
     return jsonError(405, "Method not allowed", request, env);
   }
 
