@@ -12,6 +12,7 @@ interface Location {
 
 interface CurrentWeatherProps {
   location: Location;
+  onOpenWindViz?: () => void;
 }
 
 function WeatherIcon({ iconType, className }: { iconType: string; className?: string }) {
@@ -31,7 +32,7 @@ function WeatherIcon({ iconType, className }: { iconType: string; className?: st
   }
 }
 
-export function CurrentWeather({ location }: CurrentWeatherProps) {
+export function CurrentWeather({ location, onOpenWindViz }: CurrentWeatherProps) {
   const [showHourly, setShowHourly] = useState(false);
   const { current, hourly, daily, loading, error, lastUpdated, refetch } = useWeather(location.lat, location.lon);
 
@@ -73,6 +74,10 @@ export function CurrentWeather({ location }: CurrentWeatherProps) {
     const displayHours = hours % 12 || 12;
     return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
   };
+
+  const windCardClassName = onOpenWindViz
+    ? "bg-gray-50 rounded-lg p-2 text-left transition-colors hover:bg-blue-50 hover:ring-1 hover:ring-blue-200 cursor-pointer"
+    : "bg-gray-50 rounded-lg p-2";
 
   return (
     <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-gray-100">
@@ -142,7 +147,13 @@ export function CurrentWeather({ location }: CurrentWeatherProps) {
 
       {/* Weather Stats Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 mb-1.5">
-        <div className="bg-gray-50 rounded-lg p-2">
+        <button
+          type="button"
+          onClick={onOpenWindViz}
+          disabled={!onOpenWindViz}
+          className={windCardClassName}
+          aria-label="Open wind visualization"
+        >
           <div className="flex items-center gap-1 text-gray-500 text-[10px] mb-1">
             <Wind className="w-3 h-3" />
             <span>Wind</span>
@@ -151,7 +162,7 @@ export function CurrentWeather({ location }: CurrentWeatherProps) {
           <div className="text-[10px] text-gray-500">
             {getWindDirectionName(current.windDirection)} ({current.windDirection}°)
           </div>
-        </div>
+        </button>
 
         <div className="bg-gray-50 rounded-lg p-2">
           <div className="flex items-center gap-1 text-gray-500 text-[10px] mb-1">
