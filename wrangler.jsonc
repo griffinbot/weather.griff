@@ -15,11 +15,23 @@
         "script_name": "new-weather-app-api"
       }
     ]
-  }
+  },
+  // Add your actual D1 identifiers before deploy:
+  // "d1_databases": [
+  //   {
+  //     "binding": "DB",
+  //     "database_name": "weather_griff",
+  //     "database_id": "replace-me"
+  //   }
+  // ]
   // Secrets must be set in Cloudflare (not in git):
   // - TIMEZONEDB_API_KEY
   // - GOOGLE_ELEVATION_API_KEY
+  // - SESSION_SECRET
+  // - GOOGLE_CLIENT_ID
+  // - GOOGLE_CLIENT_SECRET
   // Optional vars:
   // - TFR_UPSTREAM_URL
   // - AVIATIONALERTS_UPSTREAM_URL
+  // - GOOGLE_REDIRECT_URI
 }
