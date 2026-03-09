@@ -1,5 +1,6 @@
 import {
   ArrowUp,
+  FileUp,
   Gauge,
   Loader2,
   LocateFixed,
@@ -11,7 +12,14 @@ import {
   Settings2,
   Wind,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import type { LatLngBoundsExpression, LatLngTuple } from "leaflet";
 import {
   Circle,
@@ -35,6 +43,11 @@ import {
   type PressureLevelRow,
   type WindAloftHour,
 } from "../hooks/useWindAloft";
+import {
+  parseKmlDocument,
+  type KmlFeature,
+  type ParsedKmlDocument,
+} from "../lib/kml";
 import {
   latLonToLocalNm,
   localNmToLatLon,
@@ -82,6 +95,12 @@ interface WindVectorFeature {
   }>;
   speedKt: number;
 }
+
+type GpsFix = {
+  lat: number;
+  lon: number;
+  accuracyM: number | null;
+};
 
 const HORIZONS_MIN = [30, 60, 90, 180];
 const PROFILE_ALTITUDES = [1000, 2000, 3000, 5000, 8000, 10000, 14000, 18000];
@@ -206,6 +225,12 @@ function formatSpeedRange(minKt: number, maxKt: number): string {
   return `${Math.round(minKt)}-${Math.round(maxKt)} kt`;
 }
 
+function formatFeatureKind(kind: KmlFeature["kind"]): string {
+  if (kind === "point") return "Point";
+  if (kind === "line") return "Line";
+  return "Polygon";
+}
+
 function isBasemapStyle(value: unknown): value is BasemapStyle {
   return value === "street" || value === "dark";
 }
@@ -265,7 +290,7 @@ function SettingChip({
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
@@ -355,6 +380,12 @@ export function WindVisualization({ location }: WindVisualizationProps) {
   const [flowTick, setFlowTick] = useState(0);
   const [mapFitNonce, setMapFitNonce] = useState(0);
   const [settings, setSettings] = useState<WindVizSettings>(DEFAULT_SETTINGS);
+  const [kmlOverlay, setKmlOverlay] = useState<ParsedKmlDocument | null>(null);
+  const [kmlError, setKmlError] = useState<string | null>(null);
+  const [isReadingKml, setIsReadingKml] = useState(false);
+  const [gpsFix, setGpsFix] = useState<GpsFix | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [isGpsLoading, setIsGpsLoading] = useState(false);
 
   const { hours, loading, error } = useWindAloft(location.lat, location.lon);
   const hourMax = Math.max(0, hours.length - 1);
@@ -482,6 +513,11 @@ export function WindVisualization({ location }: WindVisualizationProps) {
     return points;
   }, [location.lat, location.lon, startLat, startLon, trajectory]);
 
+  const kmlPositions = useMemo(() => {
+    if (!kmlOverlay) return [] as Array<[number, number]>;
+    return kmlOverlay.features.flatMap((feature) => feature.positions);
+  }, [kmlOverlay]);
+
   const extentNm = useMemo(() => {
     if (pointsForExtent.length === 0) return 20;
     const maxAbs = pointsForExtent.reduce((maxValue, point) => {
@@ -507,13 +543,29 @@ export function WindVisualization({ location }: WindVisualizationProps) {
     const pad = extentNm * 1.18;
     const northWest = localNmToLatLon(-pad, pad, startLat, startLon);
     const southEast = localNmToLatLon(pad, -pad, startLat, startLon);
-    return [
+
+    const points: Array<[number, number]> = [
       [northWest.lat, northWest.lon],
       [southEast.lat, southEast.lon],
+      [location.lat, location.lon],
+      [startLat, startLon],
+      ...kmlPositions,
     ];
-  }, [extentNm, startLat, startLon]);
 
-  const fitKey = `${location.lat}:${location.lon}:${startLat}:${startLon}:${selectedAltitude}:${mapFitNonce}`;
+    if (gpsFix) {
+      points.push([gpsFix.lat, gpsFix.lon]);
+    }
+
+    const lats = points.map((point) => point[0]);
+    const lons = points.map((point) => point[1]);
+
+    return [
+      [Math.max(...lats), Math.min(...lons)],
+      [Math.min(...lats), Math.max(...lons)],
+    ];
+  }, [extentNm, gpsFix, kmlPositions, location.lat, location.lon, startLat, startLon]);
+
+  const fitKey = `${location.lat}:${location.lon}:${startLat}:${startLon}:${selectedAltitude}:${kmlOverlay?.features.length ?? 0}:${gpsFix?.lat ?? "na"}:${gpsFix?.lon ?? "na"}:${mapFitNonce}`;
 
   const speedBands: SpeedBands = trajectory?.speedBands ?? {
     minKt: 0,
@@ -725,6 +777,41 @@ export function WindVisualization({ location }: WindVisualizationProps) {
     return `${value.toFixed(decimals)} ${suffix}`;
   };
 
+  const gpsDistanceFromLaunchNm = gpsFix
+    ? Math.sqrt(
+        (() => {
+          const offset = latLonToLocalNm(gpsFix.lat, gpsFix.lon, startLat, startLon);
+          return offset.eastNm ** 2 + offset.northNm ** 2;
+        })(),
+      )
+    : null;
+
+  const kmlLegendItems = useMemo(() => {
+    if (!kmlOverlay) return [];
+    return kmlOverlay.features.slice(0, 10).map((feature) => ({
+      id: feature.id,
+      name: feature.name,
+      kind: feature.kind,
+      color: feature.kind === "polygon" ? feature.style.fillColor : feature.style.strokeColor,
+    }));
+  }, [kmlOverlay]);
+
+  const kmlFeatureCounts = useMemo(() => {
+    if (!kmlOverlay) {
+      return { points: 0, lines: 0, polygons: 0 };
+    }
+
+    return kmlOverlay.features.reduce(
+      (counts, feature) => {
+        if (feature.kind === "point") counts.points += 1;
+        if (feature.kind === "line") counts.lines += 1;
+        if (feature.kind === "polygon") counts.polygons += 1;
+        return counts;
+      },
+      { points: 0, lines: 0, polygons: 0 },
+    );
+  }, [kmlOverlay]);
+
   const handleSetStartPosition = (lat: number, lon: number) => {
     setInputError(null);
     setStartLat(lat);
@@ -761,6 +848,78 @@ export function WindVisualization({ location }: WindVisualizationProps) {
 
   const handleMapPick = (lat: number, lon: number) => {
     handleSetStartPosition(lat, lon);
+  };
+
+  const handleKmlUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsReadingKml(true);
+    setKmlError(null);
+
+    try {
+      const text = await file.text();
+      const parsed = parseKmlDocument(text, file.name);
+      if (parsed.features.length === 0) {
+        throw new Error(
+          "The KML loaded, but no Point, LineString, or Polygon features were found.",
+        );
+      }
+      setKmlOverlay(parsed);
+      setMapFitNonce((value) => value + 1);
+    } catch (error) {
+      setKmlOverlay(null);
+      setKmlError(
+        error instanceof Error ? error.message : "Failed to read the KML file.",
+      );
+    } finally {
+      setIsReadingKml(false);
+      event.target.value = "";
+    }
+  };
+
+  const clearKmlOverlay = () => {
+    setKmlOverlay(null);
+    setKmlError(null);
+  };
+
+  const requestGpsFix = () => {
+    if (typeof window === "undefined" || !("geolocation" in navigator)) {
+      setGpsError("Geolocation is not available in this browser.");
+      return;
+    }
+
+    setIsGpsLoading(true);
+    setGpsError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGpsFix({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+          accuracyM: Number.isFinite(position.coords.accuracy)
+            ? position.coords.accuracy
+            : null,
+        });
+        setIsGpsLoading(false);
+        setMapFitNonce((value) => value + 1);
+      },
+      (error) => {
+        setGpsError(error.message || "Unable to get your GPS position.");
+        setIsGpsLoading(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 30000,
+      },
+    );
+  };
+
+  const useGpsForLaunch = () => {
+    if (!gpsFix) return;
+    handleSetStartPosition(gpsFix.lat, gpsFix.lon);
+    setMapFitNonce((value) => value + 1);
   };
 
   const getProfileForAltitude = (altitudeMslFt: number) => {
@@ -1001,6 +1160,36 @@ export function WindVisualization({ location }: WindVisualizationProps) {
               </Button>
             </div>
 
+            <div className="mt-3 flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={requestGpsFix}
+                disabled={isGpsLoading}
+              >
+                {isGpsLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Getting GPS
+                  </>
+                ) : (
+                  <>
+                    <LocateFixed className="h-4 w-4" />
+                    Use my GPS
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={useGpsForLaunch}
+                disabled={!gpsFix}
+              >
+                GPS as launch
+              </Button>
+            </div>
+
             <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-900">
               <div className="font-medium">
                 {formatCoordinate(startLat, "N", "S")},{" "}
@@ -1012,6 +1201,136 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                   : `${formatDistance(launchDistanceNm)} from ${location.airport || location.name} on ${formatBearing(launchBearingDeg)}.`}
               </div>
             </div>
+
+            {(gpsFix || gpsError) && (
+              <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50 p-3 text-sm text-sky-900">
+                {gpsFix ? (
+                  <>
+                    <div className="font-medium">
+                      GPS: {formatCoordinate(gpsFix.lat, "N", "S")},{" "}
+                      {formatCoordinate(gpsFix.lon, "E", "W")}
+                    </div>
+                    <div className="mt-1 text-xs text-sky-800/80">
+                      {gpsFix.accuracyM != null
+                        ? `Accuracy about ${Math.round(gpsFix.accuracyM)} m.`
+                        : "Accuracy unavailable."}{" "}
+                      {gpsDistanceFromLaunchNm != null
+                        ? `Marker is ${formatDistance(gpsDistanceFromLaunchNm)} from the current launch point.`
+                        : ""}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-xs text-rose-700">{gpsError}</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">
+                  KML landing overlay
+                </div>
+                <div className="text-xs text-slate-500">
+                  Upload a KML file and display it on the map with a visible key.
+                </div>
+              </div>
+              <FileUp className="h-5 w-5 text-sky-600" />
+            </div>
+
+            <Input
+              type="file"
+              accept=".kml,application/vnd.google-earth.kml+xml"
+              onChange={handleKmlUpload}
+            />
+
+            {isReadingKml && (
+              <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+                Reading KML…
+              </div>
+            )}
+
+            {kmlError && (
+              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {kmlError}
+              </div>
+            )}
+
+            {kmlOverlay ? (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-sm font-semibold text-slate-900">
+                    {kmlOverlay.documentName}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {kmlOverlay.sourceName}
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-xl bg-white px-2 py-2 text-center text-slate-600">
+                      <div className="font-semibold text-slate-900">
+                        {kmlFeatureCounts.points}
+                      </div>
+                      Points
+                    </div>
+                    <div className="rounded-xl bg-white px-2 py-2 text-center text-slate-600">
+                      <div className="font-semibold text-slate-900">
+                        {kmlFeatureCounts.lines}
+                      </div>
+                      Lines
+                    </div>
+                    <div className="rounded-xl bg-white px-2 py-2 text-center text-slate-600">
+                      <div className="font-semibold text-slate-900">
+                        {kmlFeatureCounts.polygons}
+                      </div>
+                      Polygons
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    KML key
+                  </div>
+                  <div className="space-y-2">
+                    {kmlLegendItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2"
+                      >
+                        <div
+                          className="h-3 w-3 rounded-full border border-white/70"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-slate-900">
+                            {item.name}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {formatFeatureKind(item.kind)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {kmlOverlay.features.length > kmlLegendItems.length && (
+                  <div className="text-xs text-slate-500">
+                    Showing the first {kmlLegendItems.length} items in the key.
+                  </div>
+                )}
+
+                <Button type="button" variant="outline" onClick={clearKmlOverlay}>
+                  Remove KML
+                </Button>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-slate-500">
+                Supports KML `Point`, `LineString`, and `Polygon` features.
+              </p>
+            )}
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1208,6 +1527,67 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                       }}
                     />
 
+                    <Pane name="kml-overlay" style={{ zIndex: 470 }}>
+                      {kmlOverlay?.features.map((feature) => {
+                        if (feature.kind === "point") {
+                          const position = feature.positions[0];
+                          return (
+                            <CircleMarker
+                              key={feature.id}
+                              pane="kml-overlay"
+                              center={position}
+                              radius={7}
+                              pathOptions={{
+                                color: feature.style.strokeColor,
+                                fillColor: feature.style.fillColor,
+                                opacity: feature.style.strokeOpacity,
+                                fillOpacity: Math.max(feature.style.fillOpacity, 0.7),
+                                weight: Math.max(feature.style.strokeWidth, 2),
+                              }}
+                            >
+                              <Tooltip direction="top" offset={[0, -8]}>
+                                {feature.name}
+                              </Tooltip>
+                            </CircleMarker>
+                          );
+                        }
+
+                        if (feature.kind === "line") {
+                          return (
+                            <Polyline
+                              key={feature.id}
+                              pane="kml-overlay"
+                              positions={feature.positions}
+                              pathOptions={{
+                                color: feature.style.strokeColor,
+                                opacity: feature.style.strokeOpacity,
+                                weight: Math.max(feature.style.strokeWidth, 2),
+                              }}
+                            >
+                              <Tooltip sticky>{feature.name}</Tooltip>
+                            </Polyline>
+                          );
+                        }
+
+                        return (
+                          <Polygon
+                            key={feature.id}
+                            pane="kml-overlay"
+                            positions={feature.positions}
+                            pathOptions={{
+                              color: feature.style.strokeColor,
+                              opacity: feature.style.strokeOpacity,
+                              weight: Math.max(feature.style.strokeWidth, 2),
+                              fillColor: feature.style.fillColor,
+                              fillOpacity: feature.style.fillOpacity,
+                            }}
+                          >
+                            <Tooltip sticky>{feature.name}</Tooltip>
+                          </Polygon>
+                        );
+                      })}
+                    </Pane>
+
                     <Pane name="bands" style={{ zIndex: 430 }}>
                       {uncertaintyBands.map((band) => (
                         <Polygon
@@ -1311,6 +1691,21 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                     </Pane>
 
                     <Pane name="markers" style={{ zIndex: 620 }}>
+                      {gpsFix?.accuracyM != null && (
+                        <Circle
+                          pane="markers"
+                          center={[gpsFix.lat, gpsFix.lon]}
+                          radius={gpsFix.accuracyM}
+                          pathOptions={{
+                            color: "#2563eb",
+                            weight: 1,
+                            opacity: 0.5,
+                            fillColor: "#60a5fa",
+                            fillOpacity: 0.14,
+                          }}
+                        />
+                      )}
+
                       {launchDistanceNm >= 0.25 && (
                         <Polyline
                           pane="markers"
@@ -1342,6 +1737,24 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                           {location.airport || location.name}
                         </Tooltip>
                       </CircleMarker>
+
+                      {gpsFix && (
+                        <CircleMarker
+                          pane="markers"
+                          center={[gpsFix.lat, gpsFix.lon]}
+                          radius={8}
+                          pathOptions={{
+                            color: "#ffffff",
+                            fillColor: "#2563eb",
+                            fillOpacity: 0.98,
+                            weight: 2,
+                          }}
+                        >
+                          <Tooltip direction="top" offset={[0, -8]} permanent>
+                            My GPS
+                          </Tooltip>
+                        </CircleMarker>
+                      )}
 
                       <CircleMarker
                         pane="markers"
@@ -1396,6 +1809,36 @@ export function WindVisualization({ location }: WindVisualizationProps) {
                       on {BASEMAPS[settings.basemap].label.toLowerCase()} map
                     </div>
                   </div>
+
+                  {(kmlOverlay || gpsFix) && (
+                    <div className="pointer-events-none absolute left-4 top-24 max-w-[260px] rounded-2xl border border-white/10 bg-slate-950/78 px-3 py-3 text-[11px] text-slate-100 backdrop-blur-sm">
+                      <div className="font-semibold uppercase tracking-[0.16em] text-slate-300">
+                        Map key
+                      </div>
+                      {gpsFix && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="h-3 w-3 rounded-full border border-white/80 bg-blue-500" />
+                          <span>My GPS position</span>
+                        </div>
+                      )}
+                      {kmlOverlay && (
+                        <>
+                          <div className="mt-2 text-slate-300">{kmlOverlay.documentName}</div>
+                          {kmlLegendItems.slice(0, 4).map((item) => (
+                            <div key={item.id} className="mt-1 flex items-center gap-2">
+                              <div
+                                className="h-3 w-3 rounded-full border border-white/70"
+                                style={{ backgroundColor: item.color }}
+                              />
+                              <span className="truncate">
+                                {item.name} ({formatFeatureKind(item.kind)})
+                              </span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   <div className="pointer-events-none absolute bottom-4 right-4 rounded-2xl border border-white/10 bg-slate-950/78 p-3 text-[11px] text-slate-100 backdrop-blur-sm">
                     <div className="mb-2 font-semibold uppercase tracking-[0.16em] text-slate-300">
