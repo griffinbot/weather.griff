@@ -152,7 +152,7 @@ export function CurrentWeather({ location, onOpenWindViz }: CurrentWeatherProps)
           onClick={onOpenWindViz}
           disabled={!onOpenWindViz}
           className={windCardClassName}
-          aria-label="Open wind visualization"
+          aria-label="Open winds aloft"
         >
           <div className="flex items-center gap-1 text-gray-500 text-[10px] mb-1">
             <Wind className="w-3 h-3" />

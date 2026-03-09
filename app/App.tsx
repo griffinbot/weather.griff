@@ -26,9 +26,8 @@ const initialLocations = [
 ];
 
 const navTabs = [
-  { value: "overview", label: "Overview", mobileLabel: "Overview", icon: Wind },
-  { value: "discussion", label: "Discussion", mobileLabel: "Forecast", icon: FileText },
   { value: "airports", label: "Airports", mobileLabel: "Airports", icon: Plane },
+  { value: "winds-aloft", label: "Winds Aloft", mobileLabel: "Aloft", icon: Wind },
   { value: "outlook", label: "7-Day", mobileLabel: "7-Day", icon: Calendar },
   { value: "wind-viz", label: "Wind Viz", mobileLabel: "Winds", icon: Wind },
   { value: "flight", label: "Flight Plan", mobileLabel: "Flight", icon: Plane },
@@ -396,7 +395,7 @@ export default function App() {
   const [selectedLocation, setSelectedLocation] = useState<SavedLocation>(
     initialLocationsState.selectedLocation,
   );
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("airports");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   
@@ -880,7 +879,8 @@ export default function App() {
 
     const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
     const shouldUseCompactMode = () =>
-      isMobileViewport() && (activeTab === "overview" || activeTab === "wind-viz");
+      isMobileViewport() &&
+      (activeTab === "airports" || activeTab === "winds-aloft" || activeTab === "wind-viz");
 
     const updateCompactState = () => {
       if (!shouldUseCompactMode()) {
@@ -1104,20 +1104,34 @@ export default function App() {
               )}
               </div>
 
-              {/* AI Assistant Button */}
-              <Button
-                variant="ghost"
-                className="h-9 sm:h-10 flex-shrink-0 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-xl px-2.5 sm:px-3 border border-gray-200 bg-white lg:justify-self-end"
-                onClick={() => setIsAIPanelOpen(!isAIPanelOpen)}
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span className="text-xs font-medium ml-1">Chat</span>
-              </Button>
+              <div className="flex items-center gap-2 lg:justify-self-end">
+                <Button
+                  variant="ghost"
+                  className={`h-9 sm:h-10 flex-shrink-0 rounded-xl px-2.5 sm:px-3 border ${
+                    activeTab === "discussion"
+                      ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                  }`}
+                  onClick={() => setActiveTab("discussion")}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span className="text-xs font-medium ml-1">Discussion</span>
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  className="h-9 sm:h-10 flex-shrink-0 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-xl px-2.5 sm:px-3 border border-gray-200 bg-white"
+                  onClick={() => setIsAIPanelOpen(!isAIPanelOpen)}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span className="text-xs font-medium ml-1">Chat</span>
+                </Button>
+              </div>
             </div>
 
             {/* Tab Navigation */}
             <div className="min-w-0 w-full overflow-x-visible md:overflow-x-auto lg:overflow-visible" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <TabsList className="bg-gray-100 p-1 rounded-2xl mb-0 relative z-40 grid w-full grid-cols-4 gap-1 h-auto md:inline-flex md:w-max md:whitespace-nowrap md:rounded-xl md:h-10 lg:grid lg:w-full lg:grid-cols-7 lg:whitespace-normal">
+              <TabsList className="bg-gray-100 p-1 rounded-2xl mb-0 relative z-40 grid w-full grid-cols-3 gap-1 h-auto md:inline-flex md:w-max md:whitespace-nowrap md:rounded-xl md:h-10 lg:grid lg:w-full lg:grid-cols-6 lg:whitespace-normal">
                 {navTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
@@ -1150,19 +1164,17 @@ export default function App() {
 
         {/* Tab Content */}
         <div className="flex-1 min-h-0 bg-[#f5f5f7] lg:overflow-y-auto">
-          <TabsContent value="overview" className="m-0 h-full focus-visible:ring-0">
+          <TabsContent value="airports" className="m-0 h-full focus-visible:ring-0">
             <div className="w-full p-3 sm:p-6 space-y-4 sm:space-y-6">
-              {/* Current Weather */}
               <CurrentWeather
                 location={selectedLocation}
                 onOpenWindViz={() => {
-                  setActiveTab("wind-viz");
+                  setActiveTab("winds-aloft");
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
               />
 
-              {/* Wind Data Table */}
-              <WindDataTable location={selectedLocation} />
+              <AirportReports location={selectedLocation} />
             </div>
           </TabsContent>
 
@@ -1172,9 +1184,9 @@ export default function App() {
             </div>
           </TabsContent>
 
-          <TabsContent value="airports" className="m-0 h-full focus-visible:ring-0">
+          <TabsContent value="winds-aloft" className="m-0 h-full focus-visible:ring-0">
             <div className="w-full">
-              <AirportReports location={selectedLocation} />
+              <WindDataTable location={selectedLocation} />
             </div>
           </TabsContent>
 
