@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, MapPin, Settings, Wind, FileText, Plane, BarChart3, Calendar, Loader2, Bookmark, BookmarkCheck, X, Trash2, ChevronLeft, ChevronRight, Menu, MessageSquare } from "lucide-react";
+import { Search, MapPin, Settings, Wind, FileText, Plane, BarChart3, Calendar, Loader2, Bookmark, BookmarkCheck, X, Trash2, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Tabs, TabsContent } from "./components/ui/tabs";
@@ -39,9 +39,12 @@ const navTabs = [
   { value: "airports", label: "Airports", mobileLabel: "Airports", icon: Plane },
   { value: "outlook", label: "7-Day", mobileLabel: "7-Day", icon: Calendar },
   { value: "wind-viz", label: "Wind Viz", mobileLabel: "Winds", icon: Wind },
-  { value: "metadata", label: "Metadata", mobileLabel: "Data", icon: BarChart3 },
   { value: "flight", label: "Flight Plan", mobileLabel: "Flight", icon: Plane },
-  { value: "settings", label: "Settings", mobileLabel: "Settings", icon: Settings },
+] as const;
+
+const settingsMenuTabs = [
+  { value: "settings", label: "Settings", icon: Settings },
+  { value: "metadata", label: "Metadata", icon: BarChart3 },
 ] as const;
 
 interface SearchResult {
@@ -891,7 +894,9 @@ export default function App() {
     };
   }, [activeTab]);
 
-  const handleSelectTabFromMenu = (tabValue: (typeof navTabs)[number]["value"]) => {
+  const handleSelectTabFromMenu = (
+    tabValue: ((typeof navTabs)[number] | (typeof settingsMenuTabs)[number])["value"],
+  ) => {
     setActiveTab(tabValue);
     setIsHeaderMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -995,15 +1000,6 @@ export default function App() {
                 )}
               </div>
 
-              <Button
-                variant="ghost"
-                className="h-9 sm:h-10 flex-shrink-0 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-xl px-2.5 sm:px-3 border border-gray-200 bg-white"
-                onClick={() => setIsAIPanelOpen(!isAIPanelOpen)}
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span className="text-xs font-medium ml-1">Chat</span>
-              </Button>
-
               <Sheet open={isHeaderMenuOpen} onOpenChange={setIsHeaderMenuOpen}>
                 <Button
                   type="button"
@@ -1021,26 +1017,55 @@ export default function App() {
                       Navigate between the main weather views.
                     </SheetDescription>
                   </SheetHeader>
-                  <div className="p-4 space-y-2">
-                    {navTabs.map((tab) => {
-                      const Icon = tab.icon;
-                      const isActive = activeTab === tab.value;
-                      return (
-                        <button
-                          key={tab.value}
-                          type="button"
-                          onClick={() => handleSelectTabFromMenu(tab.value)}
-                          className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
-                            isActive
-                              ? "border-blue-500 bg-blue-50 text-blue-700"
-                              : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
-                          }`}
-                        >
-                          <Icon className="w-4 h-4 shrink-0" />
-                          <span className="text-sm font-medium">{tab.label}</span>
-                        </button>
-                      );
-                    })}
+                  <div className="p-4 space-y-5">
+                    <div className="space-y-2">
+                      {navTabs.map((tab) => {
+                        const Icon = tab.icon;
+                        const isActive = activeTab === tab.value;
+                        return (
+                          <button
+                            key={tab.value}
+                            type="button"
+                            onClick={() => handleSelectTabFromMenu(tab.value)}
+                            className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                              isActive
+                                ? "border-blue-500 bg-blue-50 text-blue-700"
+                                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4 shrink-0" />
+                            <span className="text-sm font-medium">{tab.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="border-t border-gray-200 pt-4">
+                      <div className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                        Settings
+                      </div>
+                      <div className="space-y-2">
+                        {settingsMenuTabs.map((tab) => {
+                          const Icon = tab.icon;
+                          const isActive = activeTab === tab.value;
+                          return (
+                            <button
+                              key={tab.value}
+                              type="button"
+                              onClick={() => handleSelectTabFromMenu(tab.value)}
+                              className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                                isActive
+                                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                                  : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                              }`}
+                            >
+                              <Icon className="w-4 h-4 shrink-0" />
+                              <span className="text-sm font-medium">{tab.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </SheetContent>
               </Sheet>
@@ -1127,7 +1152,10 @@ export default function App() {
       />
 
       {/* Footer */}
-      <Footer location={selectedLocation} />
+      <Footer
+        location={selectedLocation}
+        onOpenChat={() => setIsAIPanelOpen(true)}
+      />
     </div>
   );
 }
