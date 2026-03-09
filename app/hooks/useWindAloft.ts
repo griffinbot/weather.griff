@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { openMeteoFetch } from "../services/weatherProxy";
+import { cachedFetch } from "../services/weatherProxy";
+import type { WindResponse } from "../../shared/contracts";
 
 // ---------------------------------------------------------------------------
 // Pressure levels we request from Open-Meteo (millibars)
@@ -417,10 +418,20 @@ export function useWindAloft(lat: number, lon: number): WindAloftState & { refet
     setState((p) => ({ ...p, loading: true, error: null }));
 
     try {
-      const url = buildUrl(lat, lon);
-      const json = await openMeteoFetch(url, 10 * 60_000);
+      const json = await cachedFetch<WindResponse>(
+        `/api/winds?lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lon))}`,
+        undefined,
+        10 * 60_000,
+        10_000,
+      );
       if (abortRef.current) return;
-      const parsed = parseResponse(json);
+      const parsed = {
+        elevation_m: json.elevation_m,
+        hours: json.hours.map((hour) => ({
+          ...hour,
+          time: new Date(hour.time),
+        })),
+      };
       setState({ ...parsed, loading: false, error: null });
     } catch (err: any) {
       if (abortRef.current) return;
