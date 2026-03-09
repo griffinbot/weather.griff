@@ -1,47 +1,41 @@
-import { useEffect, useMemo, useState } from "react";
-import { Clock3, Loader2, MapPin, Search, Settings2, Sparkles, Wind } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Search, Settings, Wind, FileText, Plane, Calendar, Loader2, Bookmark, BookmarkCheck, X, Menu, ChevronLeft, ChevronRight, MessageSquare, BarChart3, SlidersHorizontal, Navigation } from "lucide-react";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
-import { cn } from "./components/ui/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
+import { CurrentWeather } from "./components/CurrentWeather";
 import { WindDataTable } from "./components/WindDataTable";
+import { WeatherDiscussion } from "./components/WeatherDiscussion";
+import { AirportReports } from "./components/AirportReports";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { WindVisualization } from "./components/WindVisualization";
-import { BriefingView } from "./components/BriefingView";
-import { ForecastView } from "./components/ForecastView";
-import { ProfileDialog } from "./components/ProfileDialog";
-import { AskDialog } from "./components/AskDialog";
-import { useBriefing } from "./hooks/useBriefing";
-import { useProfile } from "./hooks/useProfile";
-import { useSession } from "./hooks/useSession";
-import { cachedFetch } from "./services/weatherProxy";
-import type { SavedLocationRecord, SearchResultNormalized } from "../shared/contracts";
+import { FlightPlanning } from "./components/FlightPlanning";
+import { SevenDayOutlook } from "./components/SevenDayOutlook";
+import { MetadataReport } from "./components/MetadataReport";
+import { AIAssistantPanel } from "./components/AIAssistantPanel";
+import { SavedLocationWidget } from "./components/SavedLocationWidget";
+import { Footer } from "./components/Footer";
+import { cachedFetch, weatherGovFetch } from "./services/weatherProxy";
 
-const PRIMARY_TABS = [
-  { id: "briefing", label: "Briefing" },
-  { id: "winds", label: "Winds" },
-  { id: "forecast", label: "Forecast" },
+const initialLocations = [
+  { id: "1", name: "SeaTac, WA", lat: 47.4502, lon: -122.3088, airport: "KSEA" },
+  { id: "2", name: "Boeing Field, WA", lat: 47.5300, lon: -122.3019, airport: "KBFI" },
+  { id: "3", name: "Joint Base Lewis-McChord, WA", lat: 47.1376, lon: -122.4762, airport: "KTCM" },
+  { id: "4", name: "Renton Municipal, WA", lat: 47.4931, lon: -122.2162, airport: "KRNT" },
+];
+
+const navTabs = [
+  { value: "overview", label: "Overview", mobileLabel: "Over...", icon: SlidersHorizontal },
+  { value: "discussion", label: "Discussion", mobileLabel: "Discu...", icon: FileText },
+  { value: "airports", label: "Airports", mobileLabel: "Airpo...", icon: Plane },
+  { value: "outlook", label: "7-Day", mobileLabel: "7-Day", icon: Calendar },
+  { value: "wind-viz", label: "Wind Viz", mobileLabel: "Wind...", icon: Wind },
+  { value: "metadata", label: "Metadata", mobileLabel: "Meta...", icon: BarChart3 },
+  { value: "flight", label: "Flight Plan", mobileLabel: "Flight...", icon: Navigation },
+  { value: "settings", label: "", mobileLabel: "", icon: Settings },
 ] as const;
 
-<<<<<<< Updated upstream
-type PrimaryTab = (typeof PRIMARY_TABS)[number]["id"];
-type WindsSubview = "table" | "visualization";
-
-export default function App() {
-  const [activeTab, setActiveTab] = useState<PrimaryTab>("briefing");
-  const [windsSubview, setWindsSubview] = useState<WindsSubview>("table");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResultNormalized[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [askOpen, setAskOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-
-  const { data: session, loading: sessionLoading } = useSession();
-  const { profile, savePreferences, saveLocations } = useProfile(!!session?.authenticated);
-
-  useEffect(() => {
-    setWindsSubview(profile.preferences.defaultWindsView);
-  }, [profile.preferences.defaultWindsView]);
-=======
 interface SearchResult {
   place_id: number;
   lat: string;
@@ -137,6 +131,13 @@ function normalizeAirportCode(value: string | undefined | null): string | null {
   return normalized;
 }
 
+function normalizeIcaoCode(value: string | undefined | null): string | null {
+  const normalized = normalizeAirportCode(value);
+  if (!normalized) return null;
+  if (!/^[A-Z]{4}$/.test(normalized)) return null;
+  return normalized;
+}
+
 function normalizeAirportSearchCode(value: string | undefined | null): string | null {
   const normalized = normalizeAirportCode(value);
   if (!normalized) return null;
@@ -154,16 +155,24 @@ function airportCodeFromUserSearch(
 }
 
 function bestAirportCodeFromResult(result: SearchResult): string | null {
+  const directIcao = normalizeIcaoCode(result.extratags?.icao);
+  if (directIcao) return directIcao;
+
+  const iata = normalizeAirportCode(result.extratags?.iata);
+  if (iata && /^[A-Z]{3}$/.test(iata) && isUSResult(result)) return `K${iata}`;
+
   return (
-    normalizeAirportCode(result.extratags?.icao) ||
-    normalizeAirportCode(result.extratags?.iata) ||
-    normalizeAirportCode(result.extratags?.ref) ||
-    normalizeAirportCode(result.extratags?.local_ref)
+    normalizeIcaoCode(result.extratags?.ref) ||
+    normalizeIcaoCode(result.extratags?.local_ref)
   );
 }
 
 function isPlaceholderAirportCode(code: string): boolean {
   return code === "ARPT" || code === "GPS";
+}
+
+function isIcaoAirportResult(result: SearchResult): boolean {
+  return bestAirportCodeFromResult(result) !== null;
 }
 
 function normalizeOfficeCode(value: unknown): string | null {
@@ -269,18 +278,12 @@ function parseSavedLocationsFromStorage(value: unknown): SavedLocation[] | null 
   for (const entry of value) {
     if (!isRecord(entry)) return null;
 
-    const id = entry.id;
-    const name = entry.name;
-    const lat = entry.lat;
-    const lon = entry.lon;
-    const airport = entry.airport;
-    const airportLookupPending = entry.airportLookupPending;
-
+    const { id, name, lat, lon, airport, airportLookupPending } = entry;
     if (typeof id !== "string" || id.trim().length === 0) return null;
     if (typeof name !== "string" || name.trim().length === 0) return null;
-    if (typeof airport !== "string" || airport.trim().length === 0) return null;
     if (typeof lat !== "number" || !Number.isFinite(lat)) return null;
     if (typeof lon !== "number" || !Number.isFinite(lon)) return null;
+    if (typeof airport !== "string" || airport.trim().length === 0) return null;
 
     parsed.push({
       id,
@@ -306,17 +309,17 @@ function loadInitialLocationsState(): {
 
   try {
     const storedLocations = window.localStorage.getItem(SAVED_LOCATIONS_STORAGE_KEY);
-    const storedSelectedId = window.localStorage.getItem(SELECTED_LOCATION_ID_STORAGE_KEY);
-
+    const storedSelectedLocationId = window.localStorage.getItem(
+      SELECTED_LOCATION_ID_STORAGE_KEY,
+    );
     const parsedLocations = storedLocations
       ? parseSavedLocationsFromStorage(JSON.parse(storedLocations))
       : null;
-
     const savedLocations = parsedLocations ?? initialLocations;
     const selectedLocation =
-      (storedSelectedId
-        ? savedLocations.find((loc) => loc.id === storedSelectedId) ?? null
-        : null) ?? savedLocations[0] ?? initialLocations[0];
+      (storedSelectedLocationId
+        ? savedLocations.find((location) => location.id === storedSelectedLocationId)
+        : null) ?? savedLocations[0];
 
     return { savedLocations, selectedLocation };
   } catch {
@@ -395,9 +398,8 @@ export default function App() {
     initialLocationsState.selectedLocation,
   );
   const [activeTab, setActiveTab] = useState("overview");
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
-  
+
   // Search state
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -410,133 +412,270 @@ export default function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(SAVED_LOCATIONS_STORAGE_KEY, JSON.stringify(savedLocations));
+      window.localStorage.setItem(
+        SAVED_LOCATIONS_STORAGE_KEY,
+        JSON.stringify(savedLocations),
+      );
     } catch {
-      // ignore storage/quota errors
+      // Ignore storage failures so the app still works.
     }
   }, [savedLocations]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(SELECTED_LOCATION_ID_STORAGE_KEY, selectedLocation.id);
+      window.localStorage.setItem(
+        SELECTED_LOCATION_ID_STORAGE_KEY,
+        selectedLocation.id,
+      );
     } catch {
-      // ignore storage/quota errors
+      // Ignore storage failures so the app still works.
     }
   }, [selectedLocation.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!("geolocation" in navigator)) return;
->>>>>>> Stashed changes
 
-  const selectedLocation = useMemo(() => {
-    const selected = profile.savedLocations.find((location) => location.id === profile.selectedLocationId);
-    return selected || profile.savedLocations[0] || null;
-  }, [profile.savedLocations, profile.selectedLocationId]);
+    const storageKey = "weather_griff_user_location_prompted_v1";
+    if (window.localStorage.getItem(storageKey) === "1") return;
+    window.localStorage.setItem(storageKey, "1");
 
-  const { data: briefing, loading: briefingLoading, error: briefingError } = useBriefing(selectedLocation);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserCoordinates({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+        });
+      },
+      () => {},
+      {
+        enableHighAccuracy: false,
+        timeout: 6000,
+        maximumAge: 30 * 60 * 1000,
+      },
+    );
+  }, []);
 
+  // Debounce search query
   useEffect(() => {
-    if (searchQuery.trim().length < 2) {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Perform search when debounced query changes
+  useEffect(() => {
+    if (!debouncedQuery || debouncedQuery.length < 3) {
       setSearchResults([]);
       return;
     }
 
     let cancelled = false;
-    const timeout = window.setTimeout(async () => {
-      setSearching(true);
-      try {
-        const response = await cachedFetch<{ results: SearchResultNormalized[] }>(
-          `/api/search?q=${encodeURIComponent(searchQuery.trim())}`,
-          undefined,
-          30000,
-          5000,
-        );
-        if (!cancelled) {
-          setSearchResults(response.results || []);
-          setSearchOpen(true);
-        }
-      } catch {
-        if (!cancelled) setSearchResults([]);
-      } finally {
-        if (!cancelled) setSearching(false);
-      }
-    }, 200);
 
+    const searchLocations = async () => {
+      setIsSearching(true);
+      try {
+        const query = debouncedQuery.trim();
+        const normalizedCodeQuery = query.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const looksLikeAirportCode = /^[A-Z0-9]{3,4}$/.test(normalizedCodeQuery);
+        const proxyParams = new URLSearchParams({
+          q: query,
+          limit: "8",
+          format: "json",
+          addressdetails: "1",
+          extratags: "1",
+          countrycodes: "us",
+        });
+        if (userCoordinates) {
+          const left = (userCoordinates.lon - 4).toFixed(4);
+          const right = (userCoordinates.lon + 4).toFixed(4);
+          const top = (userCoordinates.lat + 3).toFixed(4);
+          const bottom = (userCoordinates.lat - 3).toFixed(4);
+          proxyParams.set("viewbox", `${left},${top},${right},${bottom}`);
+        }
+
+        const proxyData = await fetchJsonWithTimeout<SearchResult[]>(
+          `/api/position/search?${proxyParams.toString()}`,
+          1800,
+        );
+        const usProxyResults = (proxyData ?? []).filter(isUSResult);
+        const airportProxyResults = usProxyResults.filter(isIcaoAirportResult);
+        if (airportProxyResults.length > 0) {
+          if (!cancelled) {
+            setSearchResults(
+              prioritizeSearchResults(dedupeByPlaceId(airportProxyResults), query, userCoordinates),
+            );
+          }
+          return;
+        }
+
+        const geoUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
+        geoUrl.searchParams.set("name", query);
+        geoUrl.searchParams.set("count", "8");
+        geoUrl.searchParams.set("language", "en");
+        geoUrl.searchParams.set("format", "json");
+        geoUrl.searchParams.set("countryCode", "US");
+
+        const [directNominatim, geoJson] = await Promise.all([
+          fetchJsonWithTimeout<SearchResult[]>(
+            `https://nominatim.openstreetmap.org/search?${proxyParams.toString()}`,
+            1800,
+          ),
+          fetchJsonWithTimeout<{ results?: OpenMeteoGeocodingResult[] }>(geoUrl.toString(), 2200),
+        ]);
+
+        const usDirectResults = (directNominatim ?? []).filter(isUSResult);
+        const airportDirectResults = usDirectResults.filter(isIcaoAirportResult);
+        if (airportDirectResults.length > 0) {
+          if (!cancelled) {
+            setSearchResults(
+              prioritizeSearchResults(dedupeByPlaceId(airportDirectResults), query, userCoordinates),
+            );
+          }
+          return;
+        }
+
+        const results = geoJson?.results ?? [];
+        const mapped: SearchResult[] = results
+          .filter((r) => (r.country_code ?? "").toUpperCase() === "US")
+          .filter(() => looksLikeAirportCode)
+          .map((r) => ({
+            place_id: r.id,
+            lat: String(r.latitude),
+            lon: String(r.longitude),
+            display_name: [r.name, r.admin1, r.country_code].filter(Boolean).join(", "),
+            type: "place",
+            class: "place",
+            address: {
+              city: r.name,
+              state: r.admin1,
+              country_code: r.country_code?.toLowerCase(),
+            },
+            extratags:
+              normalizedCodeQuery.length === 4
+                ? { icao: normalizedCodeQuery }
+                : { iata: normalizedCodeQuery, icao: `K${normalizedCodeQuery}` },
+          }));
+
+        if (!cancelled) {
+          setSearchResults(prioritizeSearchResults(dedupeByPlaceId(mapped), query, userCoordinates));
+        }
+      } catch (error) {
+        console.error("Search failed:", error);
+      } finally {
+        if (!cancelled) {
+          setIsSearching(false);
+        }
+      }
+    };
+
+    searchLocations();
     return () => {
       cancelled = true;
-      window.clearTimeout(timeout);
     };
-  }, [searchQuery]);
+  }, [debouncedQuery, userCoordinates]);
 
-  const persistLocations = async (locations: SavedLocationRecord[], selectedLocationId: string | null) => {
-    await saveLocations(locations, selectedLocationId);
+  const createLocationFromResult = (result: SearchResult, preferredAirportCode?: string | null) => {
+    const resolvedAirportCode = bestAirportCodeFromResult(result);
+    const preferred = airportCodeFromUserSearch(preferredAirportCode, result);
+    const airportCode = normalizeIcaoCode(preferred) || resolvedAirportCode;
+    if (!airportCode) return null;
+
+    let locationName = result.display_name.split(',')[0];
+    const address = result.address;
+
+    if (address) {
+      const city = address.city || address.town || address.village;
+      const state = address.state;
+
+      if (city && state) {
+        const stateAbbrev = state.split(' ').map(word => word.substring(0, 2).toUpperCase()).join('');
+        locationName = `${city}, ${stateAbbrev}`;
+      } else if (locationName && state) {
+        const stateAbbrev = state.split(' ').map(word => word.substring(0, 2).toUpperCase()).join('');
+        locationName = `${locationName}, ${stateAbbrev}`;
+      }
+    }
+
+    return {
+      id: String(result.place_id),
+      name: locationName,
+      lat: parseFloat(result.lat),
+      lon: parseFloat(result.lon),
+      airport: airportCode,
+      airportLookupPending: false,
+    };
   };
 
-  const selectLocation = async (locationId: string) => {
-    await persistLocations(profile.savedLocations, locationId);
-    setSearchOpen(false);
+  const isLocationSaved = (result: SearchResult) => {
+    return savedLocations.some(loc => loc.id === String(result.place_id));
   };
 
-  const addSearchResult = async (result: SearchResultNormalized) => {
-    const nextLocation: SavedLocationRecord = {
-      id: result.id,
-      name: result.name,
-      lat: result.lat,
-      lon: result.lon,
-      airport: result.airport || "ARPT",
-    };
+  const handleSelectLocation = (result: SearchResult) => {
+    const nextLocation = createLocationFromResult(result, searchQuery);
+    if (!nextLocation) return;
 
-    const existing = profile.savedLocations.find((location) => location.id === nextLocation.id);
-    const nextLocations = existing
-      ? profile.savedLocations.map((location) =>
-          location.id === nextLocation.id ? { ...location, airport: nextLocation.airport } : location,
-        )
-      : [...profile.savedLocations, nextLocation];
+    setSavedLocations((prev) => {
+      const existing = prev.find((loc) => loc.id === nextLocation.id);
+      if (!existing) return [...prev, nextLocation];
 
-    await persistLocations(nextLocations, nextLocation.id);
+      const shouldPromoteAirportCode =
+        isPlaceholderAirportCode(existing.airport) && !isPlaceholderAirportCode(nextLocation.airport);
+      if (!shouldPromoteAirportCode) return prev;
+
+      return prev.map((loc) =>
+        loc.id === nextLocation.id
+          ? { ...loc, airport: nextLocation.airport, airportLookupPending: nextLocation.airportLookupPending }
+          : loc,
+      );
+    });
+
+    setSelectedLocation((prev) => {
+      if (prev.id !== nextLocation.id) return nextLocation;
+      if (isPlaceholderAirportCode(prev.airport) && !isPlaceholderAirportCode(nextLocation.airport)) {
+        return { ...prev, airport: nextLocation.airport, airportLookupPending: nextLocation.airportLookupPending };
+      }
+      return nextLocation;
+    });
     setSearchQuery("");
     setSearchResults([]);
-    setSearchOpen(false);
   };
 
-  const removeLocation = async (locationId: string) => {
-    if (profile.savedLocations.length <= 1) return;
-    const nextLocations = profile.savedLocations.filter((location) => location.id !== locationId);
-    const nextSelected =
-      profile.selectedLocationId === locationId ? nextLocations[0]?.id ?? null : profile.selectedLocationId;
-    await persistLocations(nextLocations, nextSelected);
+  const handleSaveLocation = (result: SearchResult, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newLocation = createLocationFromResult(result, searchQuery);
+    if (!newLocation) return;
+
+    setSavedLocations((prev) => {
+      if (!prev.find((loc) => loc.id === newLocation.id)) {
+        return [...prev, newLocation];
+      }
+      return prev;
+    });
   };
 
-<<<<<<< Updated upstream
-  const current = briefing?.current;
-=======
-  // Delete a location from saved list
   const handleDeleteLocation = (locationId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const newSavedLocations = savedLocations.filter(loc => loc.id !== locationId);
     if (newSavedLocations.length === 0) {
-      // Keep the app usable if someone removes everything.
       setSavedLocations(initialLocations);
       setSelectedLocation(initialLocations[0]);
       return;
     }
 
     setSavedLocations(newSavedLocations);
-
-    // If we deleted the selected location, select the first one
     if (selectedLocation.id === locationId) {
       setSelectedLocation(newSavedLocations[0]);
     }
   };
 
   const getAirportCode = (result: SearchResult, preferredAirportCode?: string | null) => {
-    const preferred = isAirportLike(result) ? airportCodeFromUserSearch(preferredAirportCode, result) : null;
-    if (preferred) return preferred;
+    const preferred = airportCodeFromUserSearch(preferredAirportCode, result);
+    if (normalizeIcaoCode(preferred)) return preferred;
     const resolved = bestAirportCodeFromResult(result);
     if (resolved) return resolved;
-    if (isAirportLike(result)) return "ARPT";
     return null;
   };
 
@@ -709,7 +848,7 @@ export default function App() {
 
     const isMobileViewport = () => window.matchMedia("(max-width: 767px)").matches;
     const shouldUseCompactMode = () =>
-      isMobileViewport() && (activeTab === "overview" || activeTab === "wind-viz");
+      isMobileViewport() && (activeTab === "overview" || activeTab === "airports" || activeTab === "wind-viz");
 
     const updateCompactState = () => {
       if (!shouldUseCompactMode()) {
@@ -728,247 +867,220 @@ export default function App() {
       window.removeEventListener("resize", updateCompactState);
     };
   }, [activeTab]);
->>>>>>> Stashed changes
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto flex min-h-screen w-full max-w-[1440px] flex-col px-4 pb-8 pt-6 sm:px-6 lg:px-8">
-        <header className="relative overflow-visible rounded-[30px] border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 p-5 shadow-[0_26px_70px_rgba(15,23,42,0.45)] sm:p-6">
-          <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-orange-400/10 blur-3xl" />
-
-          <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="rounded-full border border-orange-300/20 bg-orange-400/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-orange-200">
-                  Griff Weather
-                </div>
-                <div className="rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs text-slate-300">
-                  Rebuilt UI • Aviation-first workflow
-                </div>
+    <div className="flex min-h-screen flex-col bg-[#f5f5f7] pb-8 sm:pb-[72px] lg:h-[100dvh] lg:min-h-[100dvh] lg:overflow-hidden">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+        {/* Top Navigation */}
+        <div className="bg-white border-b border-gray-200 px-3 sm:px-6 pt-3 sm:pt-4 relative z-50">
+          <div className="pb-3 sm:pb-4 space-y-2">
+            <div className="flex items-center gap-2 sm:gap-3 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:gap-3">
+              <div className="flex shrink-0 items-center gap-2">
+                <img
+                  src="/favicon.svg"
+                  alt="Griff"
+                  className="h-9 w-9 rounded-xl border border-gray-200 bg-black p-1.5 sm:hidden"
+                />
+                <img
+                  src="/griff-weather-logo.svg"
+                  alt="Griff Weather"
+                  className="hidden sm:block h-9 w-auto rounded-xl border border-gray-200 bg-white px-2 py-1"
+                />
               </div>
 
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              {/* Search Bar */}
+              <div className="relative z-[100] flex-1 min-w-0 lg:w-full lg:min-w-0">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <Input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  onFocus={() => setSearchOpen(searchResults.length > 0)}
                   placeholder="Search airport or city"
-                  className="h-12 rounded-2xl border-white/10 bg-slate-800/80 pl-11 pr-11 text-base text-white placeholder:text-slate-400"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-9 sm:h-10 text-sm w-full sm:w-56 md:w-64 lg:w-full bg-gray-50 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 transition-all"
                 />
-                {searching && (
-                  <Loader2 className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-orange-300" />
+                {isSearching && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                  </div>
                 )}
 
-                {searchOpen && (searchResults.length > 0 || searchQuery.trim().length >= 2) && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+0.75rem)] z-30 rounded-2xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl backdrop-blur-xl">
+                {/* Search Results Dropdown */}
+                {(searchResults.length > 0 || (searchQuery.length >= 3 && !isSearching && searchResults.length === 0)) && (
+                  <div className="absolute left-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[22rem] overflow-y-auto z-[200] w-[min(24rem,calc(100vw-1.5rem))] sm:w-[min(24rem,calc(100vw-3rem))] lg:w-full lg:max-w-none">
                     {searchResults.length > 0 ? (
-                      searchResults.map((result) => (
-                        <button
-                          key={result.id}
-                          type="button"
-                          onClick={() => void addSearchResult(result)}
-                          className="flex w-full items-start justify-between rounded-xl px-4 py-3 text-left transition hover:bg-white/5"
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-white">{result.name}</span>
-                              {result.airport && (
-                                <span className="rounded-full bg-orange-400/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-200">
-                                  {result.airport}
+                      searchResults.map(result => {
+                        const code = getAirportCode(result, searchQuery);
+                        const isSaved = isLocationSaved(result);
+
+                        return (
+                          <div
+                            key={result.place_id}
+                            onClick={() => handleSelectLocation(result)}
+                            className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-start gap-3 text-sm border-b border-gray-100 last:border-0 transition-colors cursor-pointer group"
+                          >
+                            {isAirportLike(result) ? (
+                              <Plane className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                            ) : (
+                              <Search className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                            )}
+
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-900 truncate flex items-center gap-2">
+                                {code && code !== "ARPT" && (
+                                  <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono tracking-wider">
+                                    {code}
+                                  </span>
+                                )}
+                                <span className={isAirportLike(result) ? "font-semibold" : ""}>
+                                  {result.display_name.split(',')[0]}
                                 </span>
+                              </div>
+                              <div className="text-xs text-gray-500 truncate mt-1 leading-snug">
+                                {result.display_name.split(',').slice(1).join(',')}
+                              </div>
+                            </div>
+
+                            <div className="flex-shrink-0">
+                              {isSaved ? (
+                                <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 text-green-700">
+                                  <BookmarkCheck className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] font-semibold">Saved</span>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={(e) => handleSaveLocation(result, e)}
+                                  className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                  <Bookmark className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] font-semibold">Save</span>
+                                </button>
                               )}
                             </div>
-                            <div className="mt-1 text-sm text-slate-400">{result.subtitle || "Airport search result"}</div>
                           </div>
-                          <span className="text-xs font-medium text-slate-500">{result.source}</span>
-                        </button>
-                      ))
+                        );
+                      })
                     ) : (
-                      <div className="px-4 py-3 text-sm text-slate-400">No locations found.</div>
+                      <div className="p-4 text-center text-sm text-gray-500">
+                        No locations found
+                      </div>
                     )}
                   </div>
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {profile.savedLocations.map((location) => {
-                  const selected = selectedLocation?.id === location.id;
+              <div className="flex items-center gap-2 lg:justify-self-end">
+                <Button
+                  variant="ghost"
+                  className="h-9 sm:h-10 flex-shrink-0 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-xl px-2.5 sm:px-3 border border-gray-200 bg-white"
+                  onClick={() => setIsAIPanelOpen(!isAIPanelOpen)}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span className="text-xs font-medium ml-1">Chat</span>
+                </Button>
+              </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="min-w-0 w-full overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <TabsList className="bg-gray-100 p-1 rounded-2xl mb-0 relative z-40 inline-flex w-max whitespace-nowrap gap-1 h-auto md:grid md:w-full md:grid-cols-8 md:whitespace-normal md:rounded-xl md:h-10">
+                {navTabs.map((tab) => {
+                  const Icon = tab.icon;
                   return (
-                    <div key={location.id} className="group flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void selectLocation(location.id)}
-                        className={cn(
-                          "rounded-2xl border px-4 py-2.5 text-left transition",
-                          selected
-                            ? "border-orange-300/30 bg-orange-300/10 text-orange-50"
-                            : "border-white/15 bg-white/5 text-slate-200 hover:border-white/30",
-                        )}
-                      >
-                        <div className="text-xs font-bold tracking-wide">{location.airport}</div>
-                        <div className="text-xs text-slate-300">{location.name}</div>
-                      </button>
-                      {profile.savedLocations.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => void removeLocation(location.id)}
-                          className="rounded-full px-2 py-1 text-xs text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-white/5 hover:text-red-300"
-                          aria-label={`Remove ${location.name}`}
-                        >
-                          Remove
-                        </button>
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="flex-row gap-1.5 rounded-xl px-2.5 py-2 text-center data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 md:flex-1 md:justify-center md:px-2"
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0 sm:w-4 sm:h-4" />
+                      {tab.label && (
+                        <span className="text-[11px] font-medium leading-tight truncate sm:text-sm">
+                          {tab.label}
+                        </span>
                       )}
-                    </div>
+                    </TabsTrigger>
                   );
                 })}
-              </div>
-            </div>
-
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Current Conditions</p>
-                  <h1 className="mt-2 text-2xl font-semibold text-white">
-                    {selectedLocation?.name || "Select a location"}
-                  </h1>
-                  {selectedLocation && (
-                    <p className="mt-1 flex items-center gap-1 text-sm text-slate-300">
-                      <MapPin className="h-4 w-4" />
-                      {selectedLocation.airport}
-                    </p>
-                  )}
-                </div>
-                <div className="text-right">
-                  <div className="text-5xl font-light text-white">{current?.temperature ?? "--"}°</div>
-                  <div className="text-xs text-slate-400">Feels like {current?.feelsLike ?? "--"}°</div>
-                </div>
-              </div>
-
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-xs text-slate-400">Wind</p>
-                  <p className="mt-1 flex items-center gap-1 text-sm font-medium text-white">
-                    <Wind className="h-4 w-4 text-orange-200" />
-                    {current?.windSpeed ?? "--"} kt
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-xs text-slate-400">Visibility</p>
-                  <p className="mt-1 text-sm font-medium text-white">{current?.visibility ?? "--"} mi</p>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-xs text-slate-400">Humidity</p>
-                  <p className="mt-1 text-sm font-medium text-white">{current?.humidity ?? "--"}%</p>
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-wrap gap-2">
-                <Button
-                  className="h-11 rounded-xl bg-white px-4 text-slate-900 hover:bg-slate-200"
-                  onClick={() => setAskOpen(true)}
-                  disabled={!selectedLocation}
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Ask Assistant
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-11 rounded-xl border-white/20 bg-transparent px-4 text-slate-100 hover:bg-white/10"
-                  onClick={() => setProfileOpen(true)}
-                >
-                  <Settings2 className="mr-2 h-4 w-4" />
-                  {sessionLoading ? "Account" : session?.authenticated ? "Profile" : "Sign in"}
-                </Button>
-              </div>
-            </section>
-          </div>
-
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-            <nav className="grid w-full gap-2 sm:w-auto sm:grid-cols-3">
-              {PRIMARY_TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    "rounded-xl px-4 py-2.5 text-sm font-semibold transition",
-                    activeTab === tab.id
-                      ? "bg-orange-400 text-slate-950"
-                      : "bg-white/5 text-slate-300 hover:bg-white/10",
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Clock3 className="h-4 w-4" />
-              {briefing?.lastUpdated
-                ? `Updated ${new Date(briefing.lastUpdated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-                : "Awaiting location data"}
+              </TabsList>
             </div>
           </div>
-        </header>
+        </div>
 
-        <main className="mt-5 flex-1">
-          {activeTab === "briefing" && <BriefingView briefing={briefing} loading={briefingLoading} error={briefingError} />}
+        {/* Saved Locations Weather Widget Cards */}
+        <SavedLocationWidget
+          locations={savedLocations}
+          selectedLocation={selectedLocation}
+          onSelectLocation={setSelectedLocation}
+          onDeleteLocation={handleDeleteLocation}
+          compactOnMobile={isMobileLocationCardsCollapsed}
+        />
 
-          {activeTab === "winds" && selectedLocation && (
-            <div className="space-y-5">
-              <section className="rounded-[28px] border border-white/10 bg-slate-900/80 p-6 shadow-sm">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <h2 className="text-2xl font-semibold tracking-tight text-white">Winds Aloft</h2>
-                    <p className="mt-2 text-sm leading-6 text-slate-300">
-                      Compare tabular reports with vector visualization for route planning.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-xl bg-white/5 p-1">
-                    <button
-                      type="button"
-                      className={cn(
-                        "rounded-lg px-4 py-2 text-sm font-medium transition",
-                        windsSubview === "table" ? "bg-white text-slate-900" : "text-slate-300",
-                      )}
-                      onClick={() => setWindsSubview("table")}
-                    >
-                      Table
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        "rounded-lg px-4 py-2 text-sm font-medium transition",
-                        windsSubview === "visualization" ? "bg-white text-slate-900" : "text-slate-300",
-                      )}
-                      onClick={() => setWindsSubview("visualization")}
-                    >
-                      Visualization
-                    </button>
-                  </div>
-                </div>
-              </section>
-
-              {windsSubview === "table" ? (
-                <WindDataTable location={selectedLocation} />
-              ) : (
-                <WindVisualization location={selectedLocation} />
-              )}
+        {/* Tab Content */}
+        <div className="flex-1 min-h-0 bg-[#f5f5f7] lg:overflow-y-auto">
+          <TabsContent value="overview" className="m-0 h-full focus-visible:ring-0">
+            <div className="w-full p-3 sm:p-6 space-y-4 sm:space-y-6">
+              <CurrentWeather
+                location={selectedLocation}
+                onOpenWindViz={() => {
+                  setActiveTab("wind-viz");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              />
+              <WindDataTable location={selectedLocation} />
             </div>
-          )}
+          </TabsContent>
 
-          {activeTab === "forecast" && <ForecastView briefing={briefing} />}
-        </main>
-      </div>
+          <TabsContent value="discussion" className="m-0 h-full focus-visible:ring-0">
+            <div className="w-full">
+              <WeatherDiscussion location={selectedLocation} />
+            </div>
+          </TabsContent>
 
-      <ProfileDialog
-        open={profileOpen}
-        onOpenChange={setProfileOpen}
-        session={session}
-        preferences={profile.preferences}
-        onPreferencesChange={savePreferences}
+          <TabsContent value="airports" className="m-0 h-full focus-visible:ring-0">
+            <div className="w-full">
+              <AirportReports location={selectedLocation} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="outlook" className="m-0 h-full focus-visible:ring-0">
+            <div className="w-full">
+              <SevenDayOutlook location={selectedLocation} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="wind-viz" className="m-0 h-full focus-visible:ring-0">
+            <div className="w-full">
+              <WindVisualization location={selectedLocation} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="metadata" className="m-0 h-full focus-visible:ring-0">
+            <div className="w-full p-3 sm:p-6">
+              <MetadataReport location={selectedLocation} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="flight" className="m-0 h-full focus-visible:ring-0">
+            <div className="w-full">
+              <FlightPlanning location={selectedLocation} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="settings" className="m-0 h-full focus-visible:ring-0">
+            <div className="w-full">
+              <SettingsPanel location={selectedLocation} />
+            </div>
+          </TabsContent>
+        </div>
+      </Tabs>
+
+      {/* AI Assistant Panel */}
+      <AIAssistantPanel
+        location={selectedLocation}
+        isOpen={isAIPanelOpen}
+        onClose={() => setIsAIPanelOpen(false)}
       />
-      <AskDialog open={askOpen} onOpenChange={setAskOpen} location={selectedLocation} />
+
+      {/* Footer */}
+      <Footer location={selectedLocation} />
     </div>
   );
 }
