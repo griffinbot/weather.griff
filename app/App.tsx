@@ -79,6 +79,9 @@ interface SavedLocation {
   airportLookupPending?: boolean;
 }
 
+const SAVED_LOCATIONS_STORAGE_KEY = "weather.griff.savedLocations.v1";
+const SELECTED_LOCATION_ID_STORAGE_KEY = "weather.griff.selectedLocationId.v1";
+
 interface UserCoordinates {
   lat: number;
   lon: number;
@@ -250,6 +253,66 @@ function dedupeByPlaceId(results: SearchResult[]): SearchResult[] {
   return output;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseSavedLocationsFromStorage(value: unknown): SavedLocation[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const parsed: SavedLocation[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) return null;
+
+    const { id, name, lat, lon, airport, airportLookupPending } = entry;
+    if (typeof id !== "string" || id.trim().length === 0) return null;
+    if (typeof name !== "string" || name.trim().length === 0) return null;
+    if (typeof lat !== "number" || !Number.isFinite(lat)) return null;
+    if (typeof lon !== "number" || !Number.isFinite(lon)) return null;
+    if (typeof airport !== "string" || airport.trim().length === 0) return null;
+
+    parsed.push({
+      id,
+      name,
+      lat,
+      lon,
+      airport,
+      airportLookupPending:
+        typeof airportLookupPending === "boolean" ? airportLookupPending : undefined,
+    });
+  }
+
+  return parsed.length > 0 ? parsed : null;
+}
+
+function loadInitialLocationsState(): {
+  savedLocations: SavedLocation[];
+  selectedLocation: SavedLocation;
+} {
+  if (typeof window === "undefined") {
+    return { savedLocations: initialLocations, selectedLocation: initialLocations[0] };
+  }
+
+  try {
+    const storedLocations = window.localStorage.getItem(SAVED_LOCATIONS_STORAGE_KEY);
+    const storedSelectedLocationId = window.localStorage.getItem(
+      SELECTED_LOCATION_ID_STORAGE_KEY,
+    );
+    const parsedLocations = storedLocations
+      ? parseSavedLocationsFromStorage(JSON.parse(storedLocations))
+      : null;
+    const savedLocations = parsedLocations ?? initialLocations;
+    const selectedLocation =
+      (storedSelectedLocationId
+        ? savedLocations.find((location) => location.id === storedSelectedLocationId)
+        : null) ?? savedLocations[0];
+
+    return { savedLocations, selectedLocation };
+  } catch {
+    return { savedLocations: initialLocations, selectedLocation: initialLocations[0] };
+  }
+}
+
 function distanceMiles(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const toRadians = (value: number) => (value * Math.PI) / 180;
   const earthRadiusMiles = 3958.8;
@@ -305,9 +368,21 @@ function prioritizeSearchResults(
 }
 
 export default function App() {
+  const initialLocationsStateRef = useRef<ReturnType<typeof loadInitialLocationsState> | null>(
+    null,
+  );
+  if (initialLocationsStateRef.current === null) {
+    initialLocationsStateRef.current = loadInitialLocationsState();
+  }
+  const initialLocationsState = initialLocationsStateRef.current;
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(initialLocations);
-  const [selectedLocation, setSelectedLocation] = useState<SavedLocation>(initialLocations[0]);
+  const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(
+    initialLocationsState.savedLocations,
+  );
+  const [selectedLocation, setSelectedLocation] = useState<SavedLocation>(
+    initialLocationsState.selectedLocation,
+  );
   const [activeTab, setActiveTab] = useState("overview");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
@@ -320,6 +395,30 @@ export default function App() {
   const [isMobileLocationCardsCollapsed, setIsMobileLocationCardsCollapsed] = useState(false);
   const resolvingAirportIdsRef = useRef<Set<string>>(new Set());
   const prefetchKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        SAVED_LOCATIONS_STORAGE_KEY,
+        JSON.stringify(savedLocations),
+      );
+    } catch {
+      // Ignore storage failures so the app still works.
+    }
+  }, [savedLocations]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        SELECTED_LOCATION_ID_STORAGE_KEY,
+        selectedLocation.id,
+      );
+    } catch {
+      // Ignore storage failures so the app still works.
+    }
+  }, [selectedLocation.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -573,10 +672,16 @@ export default function App() {
   const handleDeleteLocation = (locationId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const newSavedLocations = savedLocations.filter(loc => loc.id !== locationId);
+    if (newSavedLocations.length === 0) {
+      setSavedLocations(initialLocations);
+      setSelectedLocation(initialLocations[0]);
+      return;
+    }
+
     setSavedLocations(newSavedLocations);
-    
+
     // If we deleted the selected location, select the first one
-    if (selectedLocation.id === locationId && newSavedLocations.length > 0) {
+    if (selectedLocation.id === locationId) {
       setSelectedLocation(newSavedLocations[0]);
     }
   };
@@ -929,7 +1034,13 @@ export default function App() {
           <TabsContent value="overview" className="m-0 h-full focus-visible:ring-0">
             <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
               {/* Current Weather */}
-              <CurrentWeather location={selectedLocation} />
+              <CurrentWeather
+                location={selectedLocation}
+                onOpenWindViz={() => {
+                  setActiveTab("wind-viz");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              />
 
               {/* Wind Data Table */}
               <WindDataTable location={selectedLocation} />
