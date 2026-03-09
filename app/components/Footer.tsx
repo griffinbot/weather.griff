@@ -19,7 +19,7 @@ export function Footer({ location }: FooterProps) {
       className="fixed left-0 right-0 bottom-[-30px] sm:bottom-0 z-50 bg-white/95 backdrop-blur border-t border-gray-200 py-2 px-3 sm:px-6"
       style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
     >
-      <div className="max-w-7xl mx-auto flex items-center justify-center sm:justify-start gap-2 text-[11px] sm:text-xs text-gray-500">
+      <div className="max-w-7xl mx-auto flex items-center justify-between text-[11px] sm:text-xs text-gray-500">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <img
             src="/griff-weather-logo.svg"
@@ -35,7 +35,10 @@ export function Footer({ location }: FooterProps) {
               hour12: true
             }) : 'loading...'}
           </span>
+          <span className="text-gray-400">·</span>
+          <span>Made by Griff</span>
         </div>
+        <span className="hidden sm:inline text-gray-400">made by Griff</span>
       </div>
     </footer>
   );
