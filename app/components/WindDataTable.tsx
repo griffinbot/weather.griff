@@ -14,7 +14,7 @@ import {
   NORMALIZED_ALTITUDES_AGL,
   WindAloftHour,
 } from "../hooks/useWindAloft";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { Fragment, useEffect, useRef, useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,7 @@ interface WindDataTableProps {
 
 const WIND_TABLE_SETTINGS_STORAGE_KEY = "weather.griff.windDataSettings.v1";
 const RAW_ALTITUDE_DEDUPE_TOLERANCE_FT = 5;
+const RAW_ALTITUDE_BUCKET_FT = 250;
 
 type AltitudeFormat = "AGL" | "MSL" | "Pressure";
 type AltitudeNormalized = "normalized" | "raw";
@@ -160,6 +161,7 @@ export function WindDataTable({
   location,
 }: WindDataTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hourColumnRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   // Wind aloft data from Open-Meteo
   const { hours, elevation_m, loading, error, refetch } =
@@ -339,6 +341,16 @@ export function WindDataTable({
     return converted.toLocaleString();
   };
 
+  const getRowKey = (row: DisplayRow): string => {
+    if (row.isSurface) return "surface";
+    if (altitudeFormat === "Pressure") return `pressure-${row.pressureLevel}`;
+    if (altitudeNormalized === "normalized") return `agl-${row.altitudeAGL_ft}`;
+    const bucketedAltitude =
+      Math.round(row.altitudeAGL_ft / RAW_ALTITUDE_BUCKET_FT) *
+      RAW_ALTITUDE_BUCKET_FT;
+    return `agl-${bucketedAltitude}`;
+  };
+
   const getAltitudeUnitLabel = (): string => {
     if (altitudeFormat === "Pressure") return "mb";
     return altitudeUnit;
@@ -400,12 +412,12 @@ export function WindDataTable({
   };
 
   const getSpeedColor = (speed: number) => {
-    if (speed >= 25) return "text-pink-200";
-    if (speed >= 20) return "text-yellow-200";
-    if (speed >= 15) return "text-yellow-300";
-    if (speed >= 10) return "text-green-200";
-    if (speed >= 5) return "text-green-300";
-    return "text-white";
+    if (speed >= 25) return "text-rose-600";
+    if (speed >= 20) return "text-amber-600";
+    if (speed >= 15) return "text-yellow-600";
+    if (speed >= 10) return "text-emerald-600";
+    if (speed >= 5) return "text-teal-600";
+    return "text-slate-700";
   };
 
   const getHourlyWindSummary = (hour: WindAloftHour) => {
@@ -484,38 +496,66 @@ export function WindDataTable({
     return best;
   }, [hours]);
 
-  // ── Scroll to current time on load ────────────────────────────────
+  const hourRows = useMemo(
+    () => hours.map((hour) => buildRows(hour)),
+    [hours, altitudeFormat, altitudeNormalized, elevationFt],
+  );
 
-  const getCardWidth = () => {
-    if (typeof window !== "undefined" && window.innerWidth < 640) return 228;
-    return 276;
-  };
+  const rowDefinitions = useMemo(() => {
+    const definitionMap = new Map<
+      string,
+      {
+        key: string;
+        sample: DisplayRow;
+      }
+    >();
+
+    hourRows.forEach((rows) => {
+      rows.forEach((row) => {
+        const key = getRowKey(row);
+        if (!definitionMap.has(key)) {
+          definitionMap.set(key, { key, sample: row });
+        }
+      });
+    });
+
+    return Array.from(definitionMap.values())
+      .sort((left, right) => {
+        if (left.sample.isSurface) return -1;
+        if (right.sample.isSurface) return 1;
+        return left.sample.altitudeAGL_ft - right.sample.altitudeAGL_ft;
+      })
+      .map((entry) => entry.sample);
+  }, [hourRows]);
+
+  const cellLookup = useMemo(() => {
+    const lookup = new Map<string, DisplayRow>();
+
+    hourRows.forEach((rows, hourIndex) => {
+      rows.forEach((row) => {
+        lookup.set(`${getRowKey(row)}:${hourIndex}`, row);
+      });
+    });
+
+    return lookup;
+  }, [hourRows]);
 
   useEffect(() => {
-    if (scrollRef.current && hours.length > 0) {
-      const container = scrollRef.current;
-      const cardWidth = getCardWidth();
-      const scrollPosition =
-        cardWidth * nowIndex -
-        container.clientWidth / 2 +
-        cardWidth / 2;
-      container.scrollLeft = Math.max(0, scrollPosition);
-    }
+    const hourColumn = hourColumnRefs.current[nowIndex];
+    hourColumn?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: "auto",
+    });
   }, [hours, nowIndex]);
 
   const scrollToCurrentTime = () => {
-    if (scrollRef.current && hours.length > 0) {
-      const container = scrollRef.current;
-      const cardWidth = getCardWidth();
-      const scrollPosition =
-        cardWidth * nowIndex -
-        container.clientWidth / 2 +
-        cardWidth / 2;
-      container.scrollTo({
-        left: Math.max(0, scrollPosition),
-        behavior: "smooth",
-      });
-    }
+    const hourColumn = hourColumnRefs.current[nowIndex];
+    hourColumn?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: "smooth",
+    });
   };
 
   // ── Loading / Error states ────────────────────────────────────────
@@ -797,129 +837,205 @@ export function WindDataTable({
         </div>
       </div>
 
-      {/* ── Scrollable cards ─────────────────────────────────────── */}
+      <style>{`
+        @keyframes windAloftColumnIn {
+          0% {
+            opacity: 0;
+            transform: translateX(-14px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        @keyframes windAloftSweep {
+          0% {
+            transform: translateX(-28%);
+            opacity: 0;
+          }
+          15% {
+            opacity: 1;
+          }
+          85% {
+            opacity: 1;
+          }
+          100% {
+            transform: translateX(128%);
+            opacity: 0;
+          }
+        }
+      `}</style>
+
+      {/* ── Hour/Altitude matrix ─────────────────────────────────── */}
       <div className="border-t border-gray-100 px-4 sm:px-6 pb-4 sm:pb-6">
         <div
           ref={scrollRef}
-          className="flex gap-2 sm:gap-4 py-4 overflow-x-auto overscroll-x-contain"
+          className="relative overflow-x-auto overscroll-x-contain py-4"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          {hours.map((hour, hourIndex) => {
-            const isNow = hourIndex === nowIndex;
-            const rows = buildRows(hour);
-            const daytime = isDaytime(hour.time);
-            const windSummary = getHourlyWindSummary(hour);
+          <div
+            className="absolute top-4 bottom-4 left-[12.75rem] w-32 bg-gradient-to-r from-transparent via-blue-200/35 to-transparent pointer-events-none"
+            style={{
+              animation: `windAloftSweep 6s ease-in-out infinite`,
+            }}
+          />
 
-            return (
-              <div
-                key={hourIndex}
-                className={`flex-shrink-0 w-[220px] sm:w-[260px] rounded-2xl overflow-hidden transition-all ${
-                  isNow
-                    ? "bg-gradient-to-br from-blue-500 to-blue-600 ring-2 ring-blue-400 ring-offset-2"
-                    : "bg-gradient-to-br from-blue-400 to-blue-500"
-                }`}
-              >
-                {/* Header */}
-                <div className="p-4 pb-3 text-white">
-                  <div className="text-2xl sm:text-3xl font-light mb-2">
-                    {formatTime(hour.time)}
+          <div
+            className="grid min-w-max gap-px rounded-3xl border border-slate-200 bg-slate-200/80 overflow-hidden"
+            style={{
+              gridTemplateColumns: `12.75rem repeat(${hours.length}, minmax(10rem, 1fr))`,
+            }}
+          >
+            <div className="sticky left-0 z-30 bg-slate-950 px-4 py-4 text-white">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-slate-300">
+                Altitude rows
+              </div>
+              <div className="mt-1 text-lg font-semibold">
+                Winds Aloft
+              </div>
+              <div className="mt-2 text-xs text-slate-300">
+                Rows are {altitudeFormat} {altitudeFormat === "Pressure" ? "pressure levels" : "altitudes"}.
+              </div>
+              <div className="mt-3 rounded-2xl bg-white/8 px-3 py-2 text-xs text-slate-200">
+                Columns animate and read left to right by hour.
+              </div>
+            </div>
+
+            {hours.map((hour, hourIndex) => {
+              const isNow = hourIndex === nowIndex;
+              const daytime = isDaytime(hour.time);
+              const windSummary = getHourlyWindSummary(hour);
+
+              return (
+                <div
+                  key={`hour-header-${hourIndex}`}
+                  ref={(element) => {
+                    hourColumnRefs.current[hourIndex] = element;
+                  }}
+                  className={`relative px-4 py-4 text-white ${
+                    isNow
+                      ? "bg-gradient-to-br from-blue-600 to-blue-700"
+                      : "bg-gradient-to-br from-sky-500 to-blue-600"
+                  }`}
+                  style={{
+                    animation: `windAloftColumnIn 520ms ease-out both`,
+                    animationDelay: `${hourIndex * 70}ms`,
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-2xl font-light">{formatTime(hour.time)}</div>
+                    <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/80">
+                      {daytime ? (
+                        <Sun className="h-3.5 w-3.5 text-yellow-300" />
+                      ) : (
+                        <Moon className="h-3.5 w-3.5 text-blue-100" />
+                      )}
+                      {isNow ? "Now" : "Hour"}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm">
-                    <span className="font-semibold">
-                      CIN {hour.cin}
-                    </span>
-                    <span className="font-semibold">
-                      CAPE {hour.cape}
-                    </span>
-                    <span className="font-semibold">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-blue-50/90">
+                    <span className="rounded-full bg-white/12 px-2 py-0.5 font-semibold">
                       AVG {convertSpeed(windSummary.avgMph)} {getSpeedUnitLabel()}
                     </span>
-                    <span className="font-semibold">
+                    <span className="rounded-full bg-white/12 px-2 py-0.5 font-semibold">
                       GUST {convertSpeed(windSummary.gustMph)} {getSpeedUnitLabel()}
                     </span>
                   </div>
+                  <div className="mt-3 text-xs text-blue-50/85">
+                    {hour.cloudCover}% {cloudLabel(hour)} · {visLabel(hour)}
+                  </div>
                 </div>
+              );
+            })}
 
-                {/* Weather info bar */}
-                <div className="px-4 pb-3 text-white flex items-center gap-2">
-                  {daytime ? (
-                    <Sun className="w-4 h-4 text-yellow-300" />
-                  ) : (
-                    <Moon className="w-4 h-4 text-blue-200" />
+            {rowDefinitions.map((rowDefinition, rowIndex) => (
+              <Fragment key={`row-${getRowKey(rowDefinition)}`}>
+                <div
+                  className={`sticky left-0 z-20 px-4 py-3 border-r border-slate-200 ${
+                    rowDefinition.isSurface
+                      ? "bg-slate-950 text-white"
+                      : "bg-slate-900 text-slate-100"
+                  }`}
+                >
+                  <div className="text-sm font-semibold whitespace-nowrap">
+                    {getDisplayAltitude(rowDefinition)}
+                  </div>
+                  {!rowDefinition.isSurface && (
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                      {getAltitudeUnitLabel()}
+                    </div>
                   )}
-                  <span className="text-xs bg-blue-700/60 px-1.5 py-0.5 rounded font-mono font-semibold">
-                    {location.airport}
-                  </span>
-                  <span className="text-sm font-medium">
-                    {hour.cloudCover}% {cloudLabel(hour)}{" "}
-                    {visLabel(hour)}
-                  </span>
                 </div>
 
-                {/* Altitude data table */}
-                <div className="bg-blue-600/40 backdrop-blur-sm">
-                  <div className="grid grid-cols-[1.05fr_0.7fr_0.95fr_1fr] sm:grid-cols-[1fr_0.8fr_1fr_0.8fr] gap-1.5 sm:gap-3 px-3 py-2 text-white text-[10px] sm:text-xs font-semibold border-b border-white/20">
-                    <div>ALT. ({altitudeFormat})</div>
-                    <div>TEMP</div>
-                    <div>DIRECTION</div>
-                    <div>SPEED</div>
-                  </div>
+                {hours.map((hour, hourIndex) => {
+                  const row = cellLookup.get(
+                    `${getRowKey(rowDefinition)}:${hourIndex}`,
+                  );
+                  const isNow = hourIndex === nowIndex;
+                  const baseCellClass = rowDefinition.isSurface
+                    ? "bg-slate-50"
+                    : "bg-white";
 
-                  <div>
-                    {rows.map((row, ri) => (
-                      <div
-                        key={ri}
-                        className={`grid grid-cols-[1.05fr_0.7fr_0.95fr_1fr] sm:grid-cols-4 gap-1.5 sm:gap-3 px-3 py-1.5 text-xs sm:text-sm border-b border-white/10 hover:bg-white/10 transition-colors ${
-                          row.isSurface ? "bg-white/5" : ""
-                        }`}
-                      >
-                        {/* Altitude */}
-                        <div className="text-white font-medium whitespace-nowrap">
-                          {getDisplayAltitude(row)}{" "}
-                          {!row.isSurface && (
-                            <span className="inline-block ml-1 text-[10px] opacity-70">
-                              {getAltitudeUnitLabel()}
+                  return (
+                    <div
+                      key={`cell-${getRowKey(rowDefinition)}-${hourIndex}`}
+                      className={`min-h-[92px] px-3 py-3 ${baseCellClass} ${
+                        isNow ? "bg-blue-50/80" : ""
+                      }`}
+                      style={{
+                        animation: `windAloftColumnIn 520ms ease-out both`,
+                        animationDelay: `${hourIndex * 70 + rowIndex * 18}ms`,
+                      }}
+                    >
+                      {row ? (
+                        <div className="flex h-full flex-col justify-between rounded-2xl border border-slate-100 bg-gradient-to-br from-white via-slate-50 to-sky-50 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+                          <div className="flex items-center justify-between gap-2">
+                            <div
+                              className={`text-lg font-semibold ${getSpeedColor(row.windSpeed)}`}
+                            >
+                              {convertSpeed(row.windSpeed)}
+                              <span className="ml-1 text-[11px] font-medium text-slate-500">
+                                {getSpeedUnitLabel()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-600">
+                              <ArrowUp
+                                className="h-4 w-4 shrink-0 text-sky-600"
+                                style={{
+                                  transform: `rotate(${getWindDirectionRotation(
+                                    row.windDirection,
+                                  )}deg)`,
+                                }}
+                              />
+                              <span className="text-xs font-medium">
+                                {row.windDirection}°
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+                            <span
+                              className={`font-semibold ${getTempColor(row.temperature)}`}
+                            >
+                              {convertTemp(row.temperature)}°{tempUnit}
                             </span>
-                          )}
+                            <span className="text-slate-500">
+                              {row.isSurface ? "Surface" : "Layer"}
+                            </span>
+                          </div>
                         </div>
-
-                        {/* Temperature */}
-                        <div
-                          className={`font-semibold ${getTempColor(row.temperature)}`}
-                        >
-                          {convertTemp(row.temperature)}°
-                          {tempUnit}
+                      ) : (
+                        <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
+                          No sample
                         </div>
-
-                        {/* Direction */}
-                        <div className="text-white font-medium flex items-center whitespace-nowrap">
-                          <ArrowUp
-                            className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0"
-                            style={{
-                              transform: `rotate(${getWindDirectionRotation(
-                                row.windDirection,
-                              )}deg)`,
-                            }}
-                          />
-                          <span className="ml-1 text-xs">
-                            {row.windDirection}°
-                          </span>
-                        </div>
-
-                        {/* Speed */}
-                        <div
-                          className={`font-semibold whitespace-nowrap ${getSpeedColor(row.windSpeed)}`}
-                        >
-                          {convertSpeed(row.windSpeed)}{" "}
-                          {getSpeedUnitLabel()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                      )}
+                    </div>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </div>
         </div>
       </div>
     </div>
