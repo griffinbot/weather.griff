@@ -28,6 +28,11 @@ export interface Env {
   GOOGLE_ELEVATION_API_KEY?: string;
   TFR_UPSTREAM_URL?: string;
   AVIATIONALERTS_UPSTREAM_URL?: string;
+  SESSION_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_REDIRECT_URI?: string;
+  DB?: D1Database;
   RATE_LIMITER: DurableObjectNamespace<RateLimiterDurableObject>;
 }
 
