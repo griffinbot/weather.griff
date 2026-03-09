@@ -26,6 +26,17 @@ const initialLocations = [
   { id: "4", name: "Boeing Field, WA", lat: 47.5300, lon: -122.3019, airport: "KBFI" },
 ];
 
+const navTabs = [
+  { value: "overview", label: "Overview", mobileLabel: "Overview", icon: Wind },
+  { value: "discussion", label: "Discussion", mobileLabel: "Forecast", icon: FileText },
+  { value: "airports", label: "Airports", mobileLabel: "Airports", icon: Plane },
+  { value: "outlook", label: "7-Day", mobileLabel: "7-Day", icon: Calendar },
+  { value: "wind-viz", label: "Wind Viz", mobileLabel: "Winds", icon: Wind },
+  { value: "metadata", label: "Metadata", mobileLabel: "Data", icon: BarChart3 },
+  { value: "flight", label: "Flight Plan", mobileLabel: "Flight", icon: Plane },
+  { value: "settings", label: "Settings", mobileLabel: "Settings", icon: Settings },
+] as const;
+
 interface SearchResult {
   place_id: number;
   lat: string;
@@ -880,40 +891,25 @@ export default function App() {
               </Button>
             </div>
 
-            {/* Tab Navigation - single horizontal bar on mobile */}
-            <div className="min-w-0 w-full overflow-x-auto lg:overflow-visible" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <TabsList className="bg-gray-100 p-1 rounded-xl mb-0 relative z-40 h-10 inline-flex w-max whitespace-nowrap gap-1 lg:grid lg:w-full lg:grid-cols-8 lg:whitespace-normal">
-                <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
-                  <Wind className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-sm">Overview</span>
-                </TabsTrigger>
-                <TabsTrigger value="discussion" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
-                  <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-sm">Discussion</span>
-                </TabsTrigger>
-                <TabsTrigger value="airports" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
-                  <Plane className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-sm">Airports</span>
-                </TabsTrigger>
-                <TabsTrigger value="outlook" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
-                  <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-sm">7-Day</span>
-                </TabsTrigger>
-                <TabsTrigger value="wind-viz" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
-                  <Wind className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-sm">Wind Viz</span>
-                </TabsTrigger>
-                <TabsTrigger value="metadata" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
-                  <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-sm">Metadata</span>
-                </TabsTrigger>
-                <TabsTrigger value="flight" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
-                  <Plane className="w-3.5 h-3.5 sm:w-4 sm:h-4 sm:mr-1.5" />
-                  <span className="text-sm">Flight Plan</span>
-                </TabsTrigger>
-                <TabsTrigger value="settings" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 px-3 py-2 flex-shrink-0 lg:w-full lg:justify-center">
-                  <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                </TabsTrigger>
+            {/* Tab Navigation */}
+            <div className="min-w-0 w-full overflow-x-visible md:overflow-x-auto lg:overflow-visible" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <TabsList className="bg-gray-100 p-1 rounded-2xl mb-0 relative z-40 grid w-full grid-cols-4 gap-1 h-auto md:inline-flex md:w-max md:whitespace-nowrap md:rounded-xl md:h-10 lg:grid lg:w-full lg:grid-cols-8 lg:whitespace-normal">
+                {navTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <TabsTrigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="min-h-[3.35rem] flex-col gap-1 rounded-xl px-2 py-2 text-center data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 md:min-h-0 md:flex-none md:flex-row md:gap-1.5 md:px-3 md:py-2 lg:w-full lg:flex-1 lg:justify-center"
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0 sm:w-4 sm:h-4" />
+                      <span className="text-[11px] font-medium leading-tight whitespace-normal sm:text-sm md:whitespace-nowrap">
+                        <span className="md:hidden">{tab.mobileLabel}</span>
+                        <span className="hidden md:inline">{tab.label}</span>
+                      </span>
+                    </TabsTrigger>
+                  );
+                })}
               </TabsList>
             </div>
           </div>
