@@ -38,6 +38,7 @@ interface WindDataTableProps {
 
 const WIND_TABLE_SETTINGS_STORAGE_KEY = "weather.griff.windDataSettings.v1";
 const RAW_ALTITUDE_DEDUPE_TOLERANCE_FT = 5;
+const MAX_DISPLAY_ALTITUDE_AGL_FT = 18000;
 
 type AltitudeFormat = "AGL" | "MSL" | "Pressure";
 type AltitudeNormalized = "normalized" | "raw";
@@ -241,6 +242,9 @@ export function WindDataTable({
   /** Build rows for a single hour based on current settings. */
   function buildRows(hour: WindAloftHour): DisplayRow[] {
     const rows: DisplayRow[] = [];
+    const cappedPressureLevels = hour.levels.filter(
+      (level) => level.altitudeAGL_ft <= MAX_DISPLAY_ALTITUDE_AGL_FT,
+    );
 
     // Surface row
     rows.push({
@@ -260,7 +264,7 @@ export function WindDataTable({
     ) {
       // Interpolate to fixed AGL altitudes
       for (const targetAGL of NORMALIZED_ALTITUDES_AGL) {
-        const interp = interpolateToAGL(hour.levels, targetAGL);
+        const interp = interpolateToAGL(cappedPressureLevels, targetAGL);
         if (interp) {
           rows.push({
             label: String(targetAGL),
@@ -289,7 +293,7 @@ export function WindDataTable({
       }
 
       // Raw pressure-level data
-      for (const lv of hour.levels) {
+      for (const lv of cappedPressureLevels) {
         rows.push({
           label:
             altitudeFormat === "Pressure"
@@ -411,10 +415,14 @@ export function WindDataTable({
   };
 
   const getHourlyWindSummary = (hour: WindAloftHour) => {
+    const cappedPressureLevels = hour.levels.filter(
+      (level) => level.altitudeAGL_ft <= MAX_DISPLAY_ALTITUDE_AGL_FT,
+    );
+
     const profileSpeedsMph = [
       hour.surfaceWindSpeed_mph,
       ...hour.nearSurfaceLevels.map((level) => level.windSpeed_mph),
-      ...hour.levels.map((level) => level.windSpeed_mph),
+      ...cappedPressureLevels.map((level) => level.windSpeed_mph),
     ].filter((value) => Number.isFinite(value) && value >= 0);
 
     const avgMph =
