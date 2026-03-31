@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, Settings, Wind, FileText, Plane, Calendar, Loader2, Bookmark, BookmarkCheck, X, Menu, ChevronLeft, ChevronRight, MessageSquare, BarChart3, SlidersHorizontal, Navigation } from "lucide-react";
+import { Search, Settings, Wind, FileText, Plane, Calendar, Loader2, Bookmark, BookmarkCheck, MessageSquare, BarChart3, SlidersHorizontal, Navigation } from "lucide-react";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover";
 import { CurrentWeather } from "./components/CurrentWeather";
 import { WindDataTable } from "./components/WindDataTable";
 import { WeatherDiscussion } from "./components/WeatherDiscussion";
@@ -17,24 +16,21 @@ import { AIAssistantPanel } from "./components/AIAssistantPanel";
 import { SavedLocationWidget } from "./components/SavedLocationWidget";
 import { Footer } from "./components/Footer";
 import { cachedFetch, weatherGovFetch } from "./services/weatherProxy";
-
-const initialLocations = [
-  { id: "1", name: "SeaTac, WA", lat: 47.4502, lon: -122.3088, airport: "KSEA" },
-  { id: "2", name: "Boeing Field, WA", lat: 47.5300, lon: -122.3019, airport: "KBFI" },
-  { id: "3", name: "Joint Base Lewis-McChord, WA", lat: 47.1376, lon: -122.4762, airport: "KTCM" },
-  { id: "4", name: "Renton Municipal, WA", lat: 47.4931, lon: -122.2162, airport: "KRNT" },
-];
+import { DEFAULT_SAVED_LOCATIONS } from "../shared/contracts";
+import type { SavedLocationRecord } from "../shared/contracts";
 
 const navTabs = [
-  { value: "overview", label: "Overview", mobileLabel: "Over...", icon: SlidersHorizontal },
-  { value: "discussion", label: "Discussion", mobileLabel: "Discu...", icon: FileText },
-  { value: "airports", label: "Airports", mobileLabel: "Airpo...", icon: Plane },
-  { value: "outlook", label: "7-Day", mobileLabel: "7-Day", icon: Calendar },
-  { value: "wind-viz", label: "Wind Viz", mobileLabel: "Wind...", icon: Wind },
-  { value: "metadata", label: "Metadata", mobileLabel: "Meta...", icon: BarChart3 },
-  { value: "flight", label: "Flight Plan", mobileLabel: "Flight...", icon: Navigation },
-  { value: "settings", label: "", mobileLabel: "", icon: Settings },
+  { value: "overview", label: "Overview", icon: SlidersHorizontal },
+  { value: "discussion", label: "Discussion", icon: FileText },
+  { value: "airports", label: "Airports", icon: Plane },
+  { value: "outlook", label: "7-Day", icon: Calendar },
+  { value: "wind-viz", label: "Wind Viz", icon: Wind },
+  { value: "metadata", label: "Metadata", icon: BarChart3 },
+  { value: "flight", label: "Flight Plan", icon: Navigation },
+  { value: "settings", label: "", icon: Settings },
 ] as const;
+
+type TabValue = (typeof navTabs)[number]["value"];
 
 interface SearchResult {
   place_id: number;
@@ -69,12 +65,7 @@ interface OpenMeteoGeocodingResult {
   timezone?: string;
 }
 
-interface SavedLocation {
-  id: string;
-  name: string;
-  lat: number;
-  lon: number;
-  airport: string;
+interface SavedLocation extends SavedLocationRecord {
   airportLookupPending?: boolean;
 }
 
@@ -304,7 +295,7 @@ function loadInitialLocationsState(): {
   selectedLocation: SavedLocation;
 } {
   if (typeof window === "undefined") {
-    return { savedLocations: initialLocations, selectedLocation: initialLocations[0] };
+    return { savedLocations: DEFAULT_SAVED_LOCATIONS, selectedLocation: DEFAULT_SAVED_LOCATIONS[0] };
   }
 
   try {
@@ -315,7 +306,7 @@ function loadInitialLocationsState(): {
     const parsedLocations = storedLocations
       ? parseSavedLocationsFromStorage(JSON.parse(storedLocations))
       : null;
-    const savedLocations = parsedLocations ?? initialLocations;
+    const savedLocations = parsedLocations ?? DEFAULT_SAVED_LOCATIONS;
     const selectedLocation =
       (storedSelectedLocationId
         ? savedLocations.find((location) => location.id === storedSelectedLocationId)
@@ -323,7 +314,7 @@ function loadInitialLocationsState(): {
 
     return { savedLocations, selectedLocation };
   } catch {
-    return { savedLocations: initialLocations, selectedLocation: initialLocations[0] };
+    return { savedLocations: DEFAULT_SAVED_LOCATIONS, selectedLocation: DEFAULT_SAVED_LOCATIONS[0] };
   }
 }
 
@@ -382,22 +373,22 @@ function prioritizeSearchResults(
 }
 
 export default function App() {
-  const initialLocationsStateRef = useRef<ReturnType<typeof loadInitialLocationsState> | null>(
+  const initialStateRef = useRef<ReturnType<typeof loadInitialLocationsState> | null>(
     null,
   );
-  if (initialLocationsStateRef.current === null) {
-    initialLocationsStateRef.current = loadInitialLocationsState();
+  if (initialStateRef.current === null) {
+    initialStateRef.current = loadInitialLocationsState();
   }
-  const initialLocationsState = initialLocationsStateRef.current;
+  const initialState = initialStateRef.current;
 
   const [searchQuery, setSearchQuery] = useState("");
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(
-    initialLocationsState.savedLocations,
+    initialState.savedLocations,
   );
   const [selectedLocation, setSelectedLocation] = useState<SavedLocation>(
-    initialLocationsState.selectedLocation,
+    initialState.selectedLocation,
   );
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState<TabValue>("overview");
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
 
   // Search state
@@ -577,10 +568,16 @@ export default function App() {
     };
   }, [debouncedQuery, userCoordinates]);
 
-  const createLocationFromResult = (result: SearchResult, preferredAirportCode?: string | null) => {
-    const resolvedAirportCode = bestAirportCodeFromResult(result);
+  const getAirportCode = (result: SearchResult, preferredAirportCode?: string | null) => {
     const preferred = airportCodeFromUserSearch(preferredAirportCode, result);
-    const airportCode = normalizeIcaoCode(preferred) || resolvedAirportCode;
+    if (normalizeIcaoCode(preferred)) return preferred;
+    const resolved = bestAirportCodeFromResult(result);
+    if (resolved) return resolved;
+    return null;
+  };
+
+  const createLocationFromResult = (result: SearchResult, preferredAirportCode?: string | null) => {
+    const airportCode = getAirportCode(result, preferredAirportCode);
     if (!airportCode) return null;
 
     let locationName = result.display_name.split(',')[0];
@@ -660,8 +657,8 @@ export default function App() {
     e.stopPropagation();
     const newSavedLocations = savedLocations.filter(loc => loc.id !== locationId);
     if (newSavedLocations.length === 0) {
-      setSavedLocations(initialLocations);
-      setSelectedLocation(initialLocations[0]);
+      setSavedLocations(DEFAULT_SAVED_LOCATIONS);
+      setSelectedLocation(DEFAULT_SAVED_LOCATIONS[0]);
       return;
     }
 
@@ -669,14 +666,6 @@ export default function App() {
     if (selectedLocation.id === locationId) {
       setSelectedLocation(newSavedLocations[0]);
     }
-  };
-
-  const getAirportCode = (result: SearchResult, preferredAirportCode?: string | null) => {
-    const preferred = airportCodeFromUserSearch(preferredAirportCode, result);
-    if (normalizeIcaoCode(preferred)) return preferred;
-    const resolved = bestAirportCodeFromResult(result);
-    if (resolved) return resolved;
-    return null;
   };
 
   useEffect(() => {
@@ -859,18 +848,28 @@ export default function App() {
       setIsMobileLocationCardsCollapsed((prev) => (prev === next ? prev : next));
     };
 
+    let rafId = 0;
+    const throttledUpdate = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        updateCompactState();
+      });
+    };
+
     updateCompactState();
-    window.addEventListener("scroll", updateCompactState, { passive: true });
-    window.addEventListener("resize", updateCompactState);
+    window.addEventListener("scroll", throttledUpdate, { passive: true });
+    window.addEventListener("resize", throttledUpdate);
     return () => {
-      window.removeEventListener("scroll", updateCompactState);
-      window.removeEventListener("resize", updateCompactState);
+      window.removeEventListener("scroll", throttledUpdate);
+      window.removeEventListener("resize", throttledUpdate);
+      if (rafId) cancelAnimationFrame(rafId);
     };
   }, [activeTab]);
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f5f5f7] pb-8 sm:pb-[72px] lg:h-[100dvh] lg:min-h-[100dvh] lg:overflow-hidden">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)} className="flex min-h-0 flex-1 flex-col">
         {/* Top Navigation */}
         <div className="bg-white border-b border-gray-200 px-3 sm:px-6 pt-3 sm:pt-4 relative z-50">
           <div className="pb-3 sm:pb-4 space-y-2">
