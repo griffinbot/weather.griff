@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, Settings, Wind, FileText, Plane, Calendar, Loader2, Bookmark, BookmarkCheck, MessageSquare, BarChart3, SlidersHorizontal, Navigation } from "lucide-react";
+import { Search, Wind, FileText, Plane, Calendar, Loader2, Bookmark, BookmarkCheck, MessageSquare, SlidersHorizontal, Navigation } from "lucide-react";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
@@ -7,11 +7,9 @@ import { CurrentWeather } from "./components/CurrentWeather";
 import { WindDataTable } from "./components/WindDataTable";
 import { WeatherDiscussion } from "./components/WeatherDiscussion";
 import { AirportReports } from "./components/AirportReports";
-import { SettingsPanel } from "./components/SettingsPanel";
 import { WindVisualization } from "./components/WindVisualization";
 import { FlightPlanning } from "./components/FlightPlanning";
 import { SevenDayOutlook } from "./components/SevenDayOutlook";
-import { MetadataReport } from "./components/MetadataReport";
 import { AIAssistantPanel } from "./components/AIAssistantPanel";
 import { SavedLocationWidget } from "./components/SavedLocationWidget";
 import { Footer } from "./components/Footer";
@@ -25,9 +23,7 @@ const navTabs = [
   { value: "airports", label: "Airports", icon: Plane },
   { value: "outlook", label: "7-Day", icon: Calendar },
   { value: "wind-viz", label: "Wind Viz", icon: Wind },
-  { value: "metadata", label: "Metadata", icon: BarChart3 },
   { value: "flight", label: "Flight Plan", icon: Navigation },
-  { value: "settings", label: "", icon: Settings },
 ] as const;
 
 type TabValue = (typeof navTabs)[number]["value"];
@@ -980,7 +976,7 @@ export default function App() {
 
             {/* Tab Navigation */}
             <div className="min-w-0 w-full overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <TabsList className="bg-gray-100 p-1 rounded-2xl mb-0 relative z-40 inline-flex w-max whitespace-nowrap gap-1 h-auto md:grid md:w-full md:grid-cols-8 md:whitespace-normal md:rounded-xl md:h-10">
+              <TabsList className="bg-gray-100 p-1 rounded-2xl mb-0 relative z-40 inline-flex w-max whitespace-nowrap gap-1 h-auto md:grid md:w-full md:grid-cols-6 md:whitespace-normal md:rounded-xl md:h-10">
                 {navTabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
@@ -1051,23 +1047,12 @@ export default function App() {
             </div>
           </TabsContent>
 
-          <TabsContent value="metadata" className="m-0 h-full focus-visible:ring-0">
-            <div className="w-full p-3 sm:p-6">
-              <MetadataReport location={selectedLocation} />
-            </div>
-          </TabsContent>
-
           <TabsContent value="flight" className="m-0 h-full focus-visible:ring-0">
             <div className="w-full">
               <FlightPlanning location={selectedLocation} />
             </div>
           </TabsContent>
 
-          <TabsContent value="settings" className="m-0 h-full focus-visible:ring-0">
-            <div className="w-full">
-              <SettingsPanel location={selectedLocation} />
-            </div>
-          </TabsContent>
         </div>
       </Tabs>
 

@@ -1,4 +1,16 @@
+import { Settings, BarChart3 } from "lucide-react";
 import { useWeather } from "../hooks/useWeather";
+import { Button } from "./ui/button";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerTrigger,
+} from "./ui/drawer";
+import { MetadataReport } from "./MetadataReport";
+import { SettingsPanel } from "./SettingsPanel";
 
 interface Location {
   name: string;
@@ -20,25 +32,63 @@ export function Footer({ location }: FooterProps) {
       style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
     >
       <div className="max-w-7xl mx-auto flex items-center justify-between text-[11px] sm:text-xs text-gray-500">
-        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-          <img
-            src="/griff-weather-logo.svg"
-            alt="Griff Weather"
-            className="hidden md:block h-6 w-auto"
-          />
-          <span className="truncate">
-            Data current as of {lastUpdated ? lastUpdated.toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true
-            }) : 'loading...'}
-          </span>
-          <span className="text-gray-400">·</span>
-          <span>Made by Griff</span>
+        <span className="truncate">
+          Data current as of {lastUpdated ? lastUpdated.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          }) : 'loading...'}
+        </span>
+
+        <div className="flex items-center gap-1">
+          <Drawer>
+            <DrawerTrigger asChild>
+              <Button
+                variant="ghost"
+                className="text-gray-500 hover:text-gray-700 gap-1.5 h-7 px-2 text-[11px] sm:text-xs"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Metadata</span>
+              </Button>
+            </DrawerTrigger>
+            <DrawerContent>
+              <DrawerHeader>
+                <DrawerTitle>Metadata</DrawerTitle>
+                <DrawerDescription>
+                  Data sources and forecast model information for {location.name}
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="overflow-y-auto px-4 pb-6">
+                <MetadataReport location={location} embedded />
+              </div>
+            </DrawerContent>
+          </Drawer>
+
+          <Drawer>
+            <DrawerTrigger asChild>
+              <Button
+                variant="ghost"
+                className="text-gray-500 hover:text-gray-700 gap-1.5 h-7 px-2 text-[11px] sm:text-xs"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Settings</span>
+              </Button>
+            </DrawerTrigger>
+            <DrawerContent>
+              <DrawerHeader>
+                <DrawerTitle>Settings</DrawerTitle>
+                <DrawerDescription>
+                  Customize your weather experience
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="overflow-y-auto px-4 pb-6">
+                <SettingsPanel location={location} embedded />
+              </div>
+            </DrawerContent>
+          </Drawer>
         </div>
-        <span className="hidden sm:inline text-gray-400">made by Griff</span>
       </div>
     </footer>
   );
